@@ -24,15 +24,16 @@
     OK: "#a6e3a1",
     WARN: "#f9e2af",
     ERR: "#f38ba8",
-    VIDEO_SPEED: 7,
-    VIDEO_MAX_FUTURE: 10,
+    VIDEO_SPEED: 5,
+    VIDEO_MAX_FUTURE: 8,
     HIDE_ACTIVITY: false,
-    GAME_CONCURRENCY: 10,
-    REQUEST_DELAY: 1500,
+    GAME_CONCURRENCY: 5,
+    REQUEST_DELAY: 2000,
     REMOVE_DELAY: 3000,
-    HEARTBEAT_STAGGER: 3000,
+    HEARTBEAT_STAGGER: 5000,
     RUNNING: true,
-    MAX_TASK_TIME: 30 * 60 * 1000,
+    MAX_TASK_TIME: 20 * 60 * 1000,
+    MAX_RETRIES: 3,
   };
 
   if (window.__punnLock) {
@@ -416,9 +417,9 @@
   // ──────────────────────────── TRAFFIC QUEUE ────────────────────────────
   const Traffic = {
     q: [], busy: false,
-    async send(url, body) {
+    async send(url, body, retries = 0) {
       if (!CONFIG.RUNNING) throw "Stopped";
-      return new Promise((ok, fail) => { this.q.push({ url, body, ok, fail }); this.run(); });
+      return new Promise((ok, fail) => { this.q.push({ url, body, ok, fail, retries }); this.run(); });
     },
     async run() {
       if (this.busy || !this.q.length) return;
@@ -434,9 +435,16 @@
             UI.log(`⏱ Rate limit — waiting ${(wait/1000).toFixed(0)}s`, "warn");
             this.q.unshift(r);
             await sleep(wait + 1000);
-          } else r.fail(e);
+          } else if (r.retries < CONFIG.MAX_RETRIES) {
+            UI.log(`⚠ Retry ${r.retries + 1}/${CONFIG.MAX_RETRIES}`, "dim");
+            r.retries++;
+            this.q.unshift(r);
+            await sleep(2000);
+          } else {
+            r.fail(e);
+          }
         }
-        await sleep(CONFIG.REQUEST_DELAY + rnd(-300, 500));
+        await sleep(CONFIG.REQUEST_DELAY + rnd(-500, 800));
       }
       this.busy = false;
     },
@@ -570,12 +578,13 @@
 
       while (cur < task.target && CONFIG.RUNNING) {
         const maxOk = Math.floor((Date.now() - t0) / 1000) + CONFIG.VIDEO_MAX_FUTURE;
-        const next = cur + CONFIG.VIDEO_SPEED;
+        const speed = CONFIG.VIDEO_SPEED + rnd(-1, 2); // randomize speed
+        const next = cur + speed;
 
-        if (maxOk - cur >= CONFIG.VIDEO_SPEED) {
+        if (maxOk - cur >= speed) {
           try {
             const r = await Traffic.send(`/quests/${quest.id}/video-progress`, {
-              timestamp: Math.min(task.target, next + (Math.random() * 2 - 0.5)),
+              timestamp: Math.min(task.target, next + (Math.random() * 3 - 1.5)),
             });
             done = r.body.completed_at != null;
             cur = Math.min(task.target, next);
@@ -586,7 +595,7 @@
         if (next >= task.target) break;
         UI.setTask(quest.id, { name: task.name, type: "VIDEO", cur, max: task.target, status: "run" });
         if (Date.now() - started > CONFIG.MAX_TASK_TIME) { UI.log(`⏰ Video timeout: ${task.name}`, "err"); break; }
-        await sleep(1000 + rnd(0, 500));
+        await sleep(1000 + rnd(200, 800));
       }
 
       if (!done && CONFIG.RUNNING) {
@@ -663,16 +672,12 @@
             prog = d.userStatus.progress?.[key]?.value ?? 0;
           }
 
-          // ── Stale detection: ถ้า progress ไม่ขยับ 5 รอบ ให้แจ้ง ──
-          if (prog === lastProg) {
-            staleCount++;
-            if (staleCount >= 5 && prog === 0) {
-              UI.log(`⚠ ${task.name}: progress 0 — อาจต้องรอ heartbeat`, "warn");
-              staleCount = 0;
-            }
-          } else {
-            staleCount = 0;
+          // ── Update progress ──
+          if (prog !== lastProg) {
             lastProg = prog;
+            staleCount = 0;
+          } else {
+            staleCount++;
           }
 
           UI.setTask(quest.id, { name: task.name, type, cur: prog, max: task.target, status: "run" });
@@ -716,7 +721,7 @@
           }
         } catch {}
         if (Date.now() - t0 > CONFIG.MAX_TASK_TIME) { UI.log(`⏰ Activity timeout`, "err"); break; }
-        await sleep(20000 + rnd(-2000, 3000));
+        await sleep(20000 + rnd(-3000, 5000));
       }
       if (CONFIG.RUNNING && cur >= task.target) this.complete(quest, task);
     },
@@ -736,8 +741,8 @@
       if (!CONFIG.RUNNING) break;
       const p = fn().then(() => running.splice(running.indexOf(p), 1));
       running.push(p);
-      // ── เว้นช่วงระหว่างเกม เพื่อให้ Discord register heartbeat ──
-      await sleep(CONFIG.HEARTBEAT_STAGGER);
+      // ── เว้นช่วงระหว่างเกม + randomize เพื่อให้ดูเป็นธรรมชาติ ──
+      await sleep(CONFIG.HEARTBEAT_STAGGER + rnd(-1000, 2000));
       if (running.length >= limit) await Promise.race(running);
     }
     return Promise.all(running);
