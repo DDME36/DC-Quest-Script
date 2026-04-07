@@ -760,7 +760,7 @@
 
     let cycle = 1;
     while (CONFIG.RUNNING) {
-      UI.log(`── Cycle ${cycle} ──`, "info");
+      UI.log(`-- Cycle ${cycle} --`, "info");
 
       const getQ = () => Mods.QuestStore.quests instanceof Map ? [...Mods.QuestStore.quests.values()] : Object.values(Mods.QuestStore.quests);
       let quests = getQ();
@@ -785,7 +785,7 @@
         new Date(q.config.expiresAt).getTime() > now
       );
 
-      if (!active.length) { UI.log("✓ No active quests — waiting 30s...", "dim"); await sleep(30000); cycle++; continue; }
+      if (!active.length) { UI.log("v No active quests - waiting 30s...", "dim"); await sleep(30000); cycle++; continue; }
 
       const videos = [], games = [];
 
@@ -847,7 +847,7 @@
       }
 
       if (!CONFIG.RUNNING) break;
-      UI.log(`Cycle ${cycle} done — rescanning...`, "ok");
+      UI.log(`Cycle ${cycle} done - rescanning...`, "ok");
       await sleep(3000);
       cycle++;
     }
