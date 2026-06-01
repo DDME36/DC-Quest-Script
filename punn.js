@@ -6,44 +6,70 @@
  *  ██║     ╚██████╔╝██║ ╚████║██║ ╚████║
  *  ╚═╝      ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═══╝
  *
- *  PUNN Quest Engine v2.0
- *  Discord Quest Auto-Completer
+ *  PUNN Quest Engine v3.0 (Modern 2026 Edition)
+ *  Discord Quest Auto-Completer & Activity Spoofer
  *
- *  วิธีใช้: Copy ทั้งหมด → Paste ลง Console (F12)
- *  กด Shift+. เพื่อ Hide/Show
+ *  Features:
+ *  - Premium Glassmorphism UI (Frosted glass, pulsing gradients, outer glows)
+ *  - Dynamic Discord Client Theme Matcher (Light, Dark, Midnight, Darker)
+ *  - Robust Heuristic Webpack Scraper (Resilient to Discord minified name updates)
+ *  - Optimized Traffic Queue & Concurrency Controller
+ *  - Secure Stealth Memory Runtime
  */
+
 (async () => {
   "use strict";
 
+  // ─── 1. DESIGN TOKENS & SYSTEM CONFIG ───
   const CONFIG = {
     NAME: "PUNN",
-    VERSION: "v2.0",
-    C1: "#b4befe",
-    C2: "#cba6f7",
-    C3: "#f5c2e7",
-    OK: "#a6e3a1",
-    WARN: "#f9e2af",
-    ERR: "#f38ba8",
-    VIDEO_SPEED: 5,
-    VIDEO_MAX_FUTURE: 8,
-    HIDE_ACTIVITY: false,
-    GAME_CONCURRENCY: 5,
-    REQUEST_DELAY: 2000,
-    REMOVE_DELAY: 3000,
-    HEARTBEAT_STAGGER: 5000,
+    VERSION: "v3.0",
     RUNNING: true,
-    MAX_TASK_TIME: 20 * 60 * 1000,
+    MAX_TASK_TIME: 25 * 60 * 1000,
     MAX_RETRIES: 3,
+    GAME_CONCURRENCY: 5,
+    REQUEST_DELAY: 2200,
+    REMOVE_DELAY: 3500,
+    HEARTBEAT_STAGGER: 4500,
+    VIDEO_SPEED: 5,
+    VIDEO_MAX_FUTURE: 10,
+    
+    // UI Theme Palette
+    THEMES: {
+      dark: {
+        bg: "rgba(10, 10, 16, 0.65)",
+        cardBg: "rgba(22, 22, 37, 0.45)",
+        cardBorder: "rgba(255, 255, 255, 0.05)",
+        textPrimary: "#f8fafc",
+        textSecondary: "#94a3b8",
+        logBg: "rgba(8, 8, 12, 0.6)",
+        logText: "#64748b",
+        glow: "rgba(167, 139, 250, 0.15)"
+      },
+      light: {
+        bg: "rgba(245, 245, 250, 0.75)",
+        cardBg: "rgba(255, 255, 255, 0.65)",
+        cardBorder: "rgba(0, 0, 0, 0.06)",
+        textPrimary: "#0f172a",
+        textSecondary: "#475569",
+        logBg: "rgba(240, 240, 245, 0.8)",
+        logText: "#475569",
+        glow: "rgba(167, 139, 250, 0.08)"
+      }
+    }
   };
 
   if (window.__punnLock) {
     const ui = document.getElementById("punn-root");
-    if (ui) ui.style.display = "flex";
-    return console.warn(`[${CONFIG.NAME}] Already running.`);
+    if (ui) {
+      ui.style.display = "flex";
+      ui.style.animation = "pIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)";
+    }
+    return console.warn(`[${CONFIG.NAME}] Quest Engine is already active.`);
   }
   window.__punnLock = true;
+  
   const _activeCleanups = new Set();
-
   const isApp = typeof DiscordNative !== "undefined";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const rnd = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
@@ -53,207 +79,257 @@
     return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
   };
 
-  // ──────────────────────────── ICONS ────────────────────────────
+  // ─── 2. STUNNING SVG ICONS ───
   const I = {
-    BOLT: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.29-.62L14.5 3h1l-1 7h3.5c.58 0 .57.32.29.62L11 21z"/></svg>`,
-    PLAY: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`,
-    GAME: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4-3c-.83 0-1.5-.67-1.5-1.5S18.67 9 19.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>`,
-    STREAM: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>`,
-    ACTIVITY: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 14.5a4.5 4.5 0 110-9 4.5 4.5 0 010 9zm0-5.5a1 1 0 100 2 1 1 0 000-2z"/></svg>`,
-    CHECK: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`,
-    CLOCK: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M12.5 7H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>`,
-    STOP: `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>`,
-    WARN: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>`,
-    MINIMIZE: `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z"/></svg>`,
+    BOLT: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>`,
+    PLAY: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`,
+    GAME: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01M15 10h.01M15 14h.01M6 12h4M8 10v4"/></svg>`,
+    STREAM: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
+    ACTIVITY: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M4 12h4M16 12h4"/></svg>`,
+    CHECK: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    CLOCK: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+    STOP: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>`,
+    WARN: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>`,
+    MINIMIZE: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
   };
 
-  // ──────────────────────────── STORAGE ────────────────────────────
+  // ─── 3. LOCAL STORAGE WIDGET COORDINATES ───
   const Store = {
     set(k, v) { try { localStorage.setItem(`punn_${k}`, JSON.stringify(v)); } catch {} },
     get(k) { try { const v = localStorage.getItem(`punn_${k}`); return v ? JSON.parse(v) : null; } catch { return null; } },
   };
 
-  // ──────────────────────────── UI ENGINE ────────────────────────────
+
+
+  // ─── 5. GLASSMORPHISM UI ENGINE ───
   const UI = {
     el: null,
     tasks: new Map(),
-    logLines: [],
     collapsed: false,
+    themeObserver: null,
 
     init() {
       document.getElementById("punn-root")?.remove();
       document.getElementById("punn-style")?.remove();
-      const pos = Store.get("pos") || { top: "20px", right: "20px", left: "auto" };
+      const pos = Store.get("pos") || { top: "24px", right: "24px", left: "auto" };
 
       const css = document.createElement("style");
       css.id = "punn-style";
       css.textContent = `
+        @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-        @keyframes pIn { from{transform:translateY(-12px);opacity:0;} to{transform:translateY(0);opacity:1;} }
-        @keyframes pOut { 0%{opacity:1;max-height:80px;} 100%{opacity:0;max-height:0;margin:0;padding:0;} }
-        @keyframes pPulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+        @keyframes pIn { from{transform:translateY(-18px) scale(0.97);opacity:0;} to{transform:translateY(0) scale(1);opacity:1;} }
+        @keyframes pOut { 0%{opacity:1;max-height:120px;} 100%{opacity:0;max-height:0;margin:0;padding:0;} }
+        @keyframes pPulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+        @keyframes pGlow { 0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;} }
+        @keyframes pLogoSpin { from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+
+        :root {
+          --punn-bg: ${CONFIG.THEMES.dark.bg};
+          --punn-card-bg: ${CONFIG.THEMES.dark.cardBg};
+          --punn-card-border: ${CONFIG.THEMES.dark.cardBorder};
+          --punn-text-primary: ${CONFIG.THEMES.dark.textPrimary};
+          --punn-text-secondary: ${CONFIG.THEMES.dark.textSecondary};
+          --punn-log-bg: ${CONFIG.THEMES.dark.logBg};
+          --punn-log-text: ${CONFIG.THEMES.dark.logText};
+          --punn-glow: ${CONFIG.THEMES.dark.glow};
+          
+          --punn-accent: linear-gradient(135deg, #a78bfa, #c084fc, #f472b6);
+          --punn-ok: #34d399;
+          --punn-warn: #fbbf24;
+          --punn-err: #f87171;
+        }
 
         #punn-root {
           position:fixed; top:${pos.top}; left:${pos.left}; right:${pos.right};
-          width:360px; background:#1e1e2e; color:#cdd6f4;
-          border-radius:16px; font-family:'Inter',system-ui,-apple-system,sans-serif;
-          z-index:99999; border:1px solid #313244;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
-          overflow:hidden; animation:pIn 0.35s ease-out;
+          width:375px; background:var(--punn-bg); color:var(--punn-text-primary);
+          border-radius:22px; font-family:'Geist','Inter',system-ui,sans-serif;
+          z-index:99999; border:1px solid var(--punn-card-border);
+          box-shadow: 0 32px 64px rgba(0,0,0,0.55), 0 8px 24px rgba(0,0,0,0.25), 0 0 40px var(--punn-glow);
+          overflow:hidden; animation:pIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
           display:flex; flex-direction:column;
+          backdrop-filter: blur(24px) saturate(160%);
+          transition: background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease, color 0.4s ease;
         }
 
         #punn-head {
-          padding:14px 16px; background:#181825;
+          padding:16px 18px; background:rgba(0,0,0,0.18);
           display:flex; justify-content:space-between; align-items:center;
-          border-bottom:1px solid #313244; cursor:grab; user-select:none;
+          border-bottom:1px solid var(--punn-card-border); cursor:grab; user-select:none;
         }
         #punn-head:active { cursor:grabbing; }
 
-        .punn-brand { display:flex; align-items:center; gap:11px; }
-        .punn-logo {
-          width:32px; height:32px; border-radius:10px;
-          background:linear-gradient(135deg, ${CONFIG.C1}, ${CONFIG.C2}, ${CONFIG.C3});
-          display:flex; align-items:center; justify-content:center;
-          font-weight:800; font-size:13px; color:#1e1e2e; letter-spacing:1px;
-          box-shadow: 0 2px 8px rgba(180,190,254,0.25);
+        .punn-brand { display:flex; align-items:center; gap:12px; }
+        
+        .punn-logo-container {
+          position:relative; width:34px; height:34px; border-radius:11px;
+          padding:1px; background:var(--punn-accent); background-size:200% 200%;
+          animation:pGlow 4s ease infinite;
         }
+        .punn-logo {
+          width:100%; height:100%; border-radius:10px; background:#0f0f15;
+          display:flex; align-items:center; justify-content:center;
+          font-weight:900; font-size:14px; color:#fff; letter-spacing:1px;
+          text-shadow: 0 0 8px rgba(167,139,250,0.6);
+        }
+        #punn-head:hover .punn-logo-container { animation: pLogoSpin 2s linear infinite; }
+
         .punn-title-wrap { display:flex; flex-direction:column; }
         .punn-title {
-          font-weight:800; font-size:15px; letter-spacing:2px; color:#cdd6f4;
+          font-weight:800; font-size:16px; letter-spacing:1.8px; color:var(--punn-text-primary);
+          background: var(--punn-accent); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
         .punn-sub {
-          font-size:9px; color:#585b70; font-weight:500;
-          letter-spacing:0.5px; margin-top:1px;
+          font-size:10px; color:var(--punn-text-secondary); font-weight:600;
+          letter-spacing:0.5px; opacity:0.8;
         }
+        
         .punn-env {
-          font-size:8px; padding:2px 8px; border-radius:8px; font-weight:700;
-          letter-spacing:0.5px;
+          font-size:8px; padding:3px 8px; border-radius:8px; font-weight:800;
+          letter-spacing:0.8px; text-transform:uppercase;
         }
-        .punn-env-app { background:rgba(166,227,161,0.1); color:${CONFIG.OK}; }
-        .punn-env-web { background:rgba(249,226,175,0.1); color:${CONFIG.WARN}; }
+        .punn-env-app { background:rgba(52,211,153,0.12); color:var(--punn-ok); }
+        .punn-env-web { background:rgba(251,191,36,0.12); color:var(--punn-warn); }
 
-        .punn-ctrl { display:flex; gap:6px; align-items:center; }
+        .punn-ctrl { display:flex; gap:8px; align-items:center; }
         .punn-btn {
-          cursor:pointer; opacity:0.4; transition:all 0.2s ease; display:flex;
-          align-items:center; justify-content:center; border-radius:8px;
-          width:28px; height:28px;
+          cursor:pointer; opacity:0.6; transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1); display:flex;
+          align-items:center; justify-content:center; border-radius:9px;
+          width:30px; height:30px; border:1px solid transparent;
         }
-        .punn-btn:hover { opacity:1; background:#313244; }
+        .punn-btn:hover { opacity:1; background:rgba(255,255,255,0.06); border-color:var(--punn-card-border); }
+        
         .punn-btn-stop {
-          opacity:0.6; color:${CONFIG.ERR};
-          font-size:9px; font-weight:700; gap:3px; padding:0 10px; width:auto;
-          letter-spacing:0.5px; border-radius:8px;
+          opacity:0.85; color:var(--punn-err);
+          font-size:10px; font-weight:800; gap:5px; padding:0 12px; width:auto;
+          letter-spacing:0.5px; border-radius:10px; background:rgba(248,113,113,0.08);
+          border:1px solid rgba(248,113,113,0.15);
         }
-        .punn-btn-stop:hover { background:rgba(243,139,168,0.1); opacity:1; }
+        .punn-btn-stop:hover { background:rgba(248,113,113,0.15); opacity:1; box-shadow:0 0 10px rgba(248,113,113,0.25); }
 
         #punn-body {
-          padding:8px 10px; max-height:380px; overflow-y:auto; flex-grow:1;
-          transition:max-height 0.3s ease;
+          padding:12px 14px; max-height:420px; overflow-y:auto; flex-grow:1;
+          display:flex; flex-direction:column; gap:8px;
+          transition:max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        #punn-body.collapsed { max-height:0; padding:0 10px; overflow:hidden; }
+        #punn-body.collapsed { max-height:0; padding:0 14px; overflow:hidden; }
         #punn-body::-webkit-scrollbar { width:4px; }
-        #punn-body::-webkit-scrollbar-track { background:transparent; }
-        #punn-body::-webkit-scrollbar-thumb { background:#45475a; border-radius:4px; }
+        #punn-body::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.12); border-radius:4px; }
 
         .punn-empty {
-          text-align:center; padding:28px; color:#585b70;
-          font-size:12px; font-weight:500;
+          text-align:center; padding:36px; color:var(--punn-text-secondary);
+          font-size:13px; font-weight:500; letter-spacing:0.5px; opacity:0.75;
         }
 
         .punn-card {
-          display:flex; gap:11px; padding:10px 13px; margin-bottom:4px;
-          background:#181825; border-radius:12px;
-          border:1px solid #313244;
-          transition:all 0.2s ease; position:relative; overflow:hidden;
+          display:flex; flex-direction:column; gap:10px; padding:12px 16px;
+          background:var(--punn-card-bg); border-radius:16px;
+          border:1px solid var(--punn-card-border);
+          transition:all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); position:relative; overflow:hidden;
         }
-        .punn-card:hover { background:#1e1e2e; border-color:#45475a; }
+        .punn-card:hover { 
+          background:rgba(255,255,255,0.02); 
+          border-color:rgba(167,139,250,0.3);
+          transform: translateY(-2px);
+          box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+        }
         .punn-card::before {
-          content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
-          background:${CONFIG.C1}; border-radius:3px 0 0 3px;
+          content:''; position:absolute; left:0; top:0; bottom:0; width:4px;
+          background:linear-gradient(to bottom, #a78bfa, #f472b6); border-radius:4px 0 0 4px;
         }
-        .punn-card.s-done::before { background:${CONFIG.OK}; }
-        .punn-card.s-done { border-color:rgba(166,227,161,0.15); }
-        .punn-card.s-queue { opacity:0.4; }
-        .punn-card.s-queue::before { background:#585b70; }
-        .punn-card.s-warn::before { background:${CONFIG.WARN}; }
-        .punn-card.s-warn { border-color:rgba(249,226,175,0.15); }
+        .punn-card.s-done::before { background:var(--punn-ok); }
+        .punn-card.s-done { border-color:rgba(52,211,153,0.25); }
+        .punn-card.s-queue { opacity:0.55; }
+        .punn-card.s-queue::before { background:#64748b; }
+        .punn-card.s-warn::before { background:var(--punn-warn); }
+        .punn-card.s-warn { border-color:rgba(251,191,36,0.25); }
+        .punn-card.s-claiming::before { background:var(--punn-warn); animation:pPulse 1.2s ease infinite; }
         .punn-card.s-rm { animation:pOut 0.4s ease forwards; }
 
+        .p-meta { display:flex; gap:14px; align-items:center; width:100%; }
+
         .p-ico {
-          min-width:36px; height:36px; border-radius:10px;
+          min-width:40px; height:40px; border-radius:12px;
           display:flex; align-items:center; justify-content:center;
-          background:#1e1e2e; color:${CONFIG.C1};
-          border:1px solid #313244;
+          background:rgba(0,0,0,0.25); color:#a78bfa;
+          border:1px solid var(--punn-card-border);
+          transition: all 0.3s ease;
         }
-        .punn-card.s-done .p-ico { color:${CONFIG.OK}; border-color:rgba(166,227,161,0.2); }
-        .punn-card.s-queue .p-ico { color:#585b70; border-color:#313244; }
-        .punn-card.s-warn .p-ico { color:${CONFIG.WARN}; border-color:rgba(249,226,175,0.2); }
+        .punn-card.s-done .p-ico { color:var(--punn-ok); border-color:rgba(52,211,153,0.3); background:rgba(52,211,153,0.05); }
+        .punn-card.s-queue .p-ico { color:#64748b; border-color:transparent; }
+        .punn-card.s-warn .p-ico { color:var(--punn-warn); border-color:rgba(251,191,36,0.3); background:rgba(251,191,36,0.05); }
 
         .p-body { flex:1; min-width:0; }
-        .p-row1 { display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; }
+        .p-row1 { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+        
         .p-name {
-          font-size:12px; font-weight:600; color:#cdd6f4;
-          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:165px;
+          font-size:13.5px; font-weight:700; color:var(--punn-text-primary);
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;
         }
+        
         .p-badge {
-          font-size:8px; font-weight:700; padding:2px 8px; border-radius:6px;
-          letter-spacing:0.5px; display:flex; align-items:center; gap:4px;
+          font-size:8px; font-weight:800; padding:2px 8px; border-radius:6px;
+          letter-spacing:0.8px; display:flex; align-items:center; gap:4px;
         }
         .p-b-live {
-          background:rgba(180,190,254,0.12); color:${CONFIG.C1};
+          background:rgba(167,139,250,0.12); color:#c084fc;
         }
         .p-b-live::before {
           content:''; width:5px; height:5px; border-radius:50%;
-          background:${CONFIG.C1}; animation:pPulse 2s ease infinite;
+          background:#c084fc; animation:pPulse 1.5s ease infinite;
         }
-        .p-b-done { background:rgba(166,227,161,0.12); color:${CONFIG.OK}; }
-        .p-b-queue { background:rgba(88,91,112,0.2); color:#585b70; }
-        .p-b-warn { background:rgba(249,226,175,0.12); color:${CONFIG.WARN}; }
+        .p-b-done { background:rgba(52,211,153,0.12); color:var(--punn-ok); }
+        .p-b-queue { background:rgba(100,116,139,0.15); color:#64748b; }
+        .p-b-warn { background:rgba(251,191,36,0.12); color:var(--punn-warn); }
 
         .p-row2 {
           display:flex; justify-content:space-between; align-items:center;
-          font-size:10px; color:#585b70; margin-bottom:6px; font-weight:500;
+          font-size:11px; color:var(--punn-text-secondary); margin-bottom:8px; font-weight:600;
         }
-        .p-pct { font-weight:600; font-size:10px; color:${CONFIG.C1}; font-family:'JetBrains Mono',monospace; }
-        .punn-card.s-done .p-pct { color:${CONFIG.OK}; }
+        
+        .p-pct { 
+          font-weight:700; font-size:11px; color:#a78bfa; 
+          font-family:'JetBrains Mono',monospace; 
+        }
+        .punn-card.s-done .p-pct { color:var(--punn-ok); }
 
         .p-track {
-          height:3px; background:#313244; border-radius:3px;
+          height:4px; background:rgba(255,255,255,0.06); border-radius:4px;
           overflow:hidden;
         }
         .p-fill {
-          height:100%; border-radius:3px; transition:width 0.5s ease;
-          background:linear-gradient(90deg, ${CONFIG.C1}, ${CONFIG.C2});
+          height:100%; border-radius:4px; transition:width 0.4s cubic-bezier(0.1, 0.8, 0.2, 1);
+          background:linear-gradient(90deg, #a78bfa, #f472b6);
+          box-shadow: 0 0 8px rgba(167, 139, 250, 0.4);
         }
-        .punn-card.s-done .p-fill { background:${CONFIG.OK}; }
+        .punn-card.s-done .p-fill { background:var(--punn-ok); box-shadow: none; }
 
         #punn-log {
-          padding:8px 14px; background:#11111b; max-height:100px;
-          overflow-y:auto; border-top:1px solid #313244;
+          padding:10px 16px; background:var(--punn-log-bg); max-height:110px;
+          overflow-y:auto; border-top:1px solid var(--punn-card-border);
           font-family:'JetBrains Mono','Consolas',monospace;
-          font-size:10px; color:#585b70; scroll-behavior:smooth;
-          transition:max-height 0.3s ease;
+          font-size:10px; color:var(--punn-log-text); scroll-behavior:smooth;
+          transition:max-height 0.3s ease, background 0.3s ease;
         }
-        #punn-log.collapsed { max-height:0; padding:0 14px; overflow:hidden; }
+        #punn-log.collapsed { max-height:0; padding:0 16px; overflow:hidden; }
         #punn-log::-webkit-scrollbar { width:3px; }
-        #punn-log::-webkit-scrollbar-thumb { background:#313244; border-radius:3px; }
+        #punn-log::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:3px; }
 
         .p-log {
-          margin-bottom:1px; display:flex; gap:8px; line-height:1.6;
-          padding:1px 0;
+          margin-bottom:2px; display:flex; gap:10px; line-height:1.6;
+          padding:2px 0;
         }
-        .p-ts { opacity:0.4; min-width:46px; font-size:9px; }
-        .p-l-info { color:${CONFIG.C1}; }
-        .p-l-ok { color:${CONFIG.OK}; }
-        .p-l-warn { color:${CONFIG.WARN}; }
-        .p-l-err { color:${CONFIG.ERR}; }
-        .p-l-dim { color:#45475a; }
+        .p-ts { opacity:0.45; min-width:50px; font-size:9.5px; }
+        .p-l-info { color:#a78bfa; }
+        .p-l-ok { color:var(--punn-ok); }
+        .p-l-warn { color:var(--punn-warn); }
+        .p-l-err { color:var(--punn-err); }
+        .p-l-dim { color:#475569; }
 
         #punn-foot {
-          padding:6px; text-align:center; font-size:8px; letter-spacing:1.5px;
-          color:#45475a; font-weight:600;
-          background:#11111b; border-top:1px solid #313244;
+          padding:8px; text-align:center; font-size:8px; letter-spacing:2px;
+          color:#475569; font-weight:700;
+          background:rgba(0,0,0,0.22); border-top:1px solid var(--punn-card-border);
         }
       `;
       document.head.appendChild(css);
@@ -261,13 +337,15 @@
       this.el = document.createElement("div");
       this.el.id = "punn-root";
       const envTag = isApp
-        ? `<span class="punn-env punn-env-app">⚡ APP</span>`
-        : `<span class="punn-env punn-env-web">🌐 WEB</span>`;
+        ? `<span class="punn-env punn-env-app">⚡ app</span>`
+        : `<span class="punn-env punn-env-web">🌐 web</span>`;
 
       this.el.innerHTML = `
         <div id="punn-head">
           <div class="punn-brand">
-            <div class="punn-logo">P</div>
+            <div class="punn-logo-container">
+              <div class="punn-logo">P</div>
+            </div>
             <div class="punn-title-wrap">
               <div class="punn-title">${CONFIG.NAME}</div>
               <div class="punn-sub">${CONFIG.VERSION} · Quest Engine</div>
@@ -279,13 +357,13 @@
             <div class="punn-btn" id="punn-min" title="Minimize">${I.MINIMIZE}</div>
           </div>
         </div>
-        <div id="punn-body"><div class="punn-empty">◈ Initializing...</div></div>
+        <div id="punn-body"><div class="punn-empty">◈ Booting Engine...</div></div>
         <div id="punn-log"></div>
-        <div id="punn-foot">PUNN · QUEST ENGINE</div>
+        <div id="punn-foot">PUNN TECHNOLOGY · EST 2026</div>
       `;
       document.body.appendChild(this.el);
 
-      // ── Drag ──
+      // ── Drag & Drop ──
       const head = document.getElementById("punn-head");
       let drag = false, sx, sy, ix, iy;
       head.onmousedown = (e) => {
@@ -313,6 +391,7 @@
 
       document.getElementById("punn-min").onclick = () => this.toggleCollapse();
       document.getElementById("punn-stop").onclick = () => this.shutdown();
+      
       document.addEventListener("keydown", (e) => {
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
         if (e.key === ">" || (e.shiftKey && e.key === ".")) {
@@ -320,7 +399,27 @@
         }
       });
 
-      try { if (Notification.permission === "default") Notification.requestPermission(); } catch {}
+      // ── Dynamic Theme Switching Observer ──
+      this.themeObserver = new MutationObserver(() => this.syncTheme());
+      this.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+      this.themeObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+      this.syncTheme();
+    },
+
+    syncTheme() {
+      const isLight = document.body.classList.contains("theme-light") || document.documentElement.classList.contains("theme-light");
+      const root = document.getElementById("punn-root");
+      if (!root) return;
+
+      const theme = isLight ? CONFIG.THEMES.light : CONFIG.THEMES.dark;
+      root.style.setProperty("--punn-bg", theme.bg);
+      root.style.setProperty("--punn-card-bg", theme.cardBg);
+      root.style.setProperty("--punn-card-border", theme.cardBorder);
+      root.style.setProperty("--punn-text-primary", theme.textPrimary);
+      root.style.setProperty("--punn-text-secondary", theme.textSecondary);
+      root.style.setProperty("--punn-log-bg", theme.logBg);
+      root.style.setProperty("--punn-log-text", theme.logText);
+      root.style.setProperty("--punn-glow", theme.glow);
     },
 
     toggleCollapse() {
@@ -332,11 +431,18 @@
     shutdown() {
       if (!CONFIG.RUNNING) return;
       CONFIG.RUNNING = false;
-      this.log("Shutting down...", "warn");
+      this.log("Shutting down engine...", "warn");
       _activeCleanups.forEach(fn => { try { fn(); } catch {} });
       _activeCleanups.clear();
+      if (this.themeObserver) {
+        try { this.themeObserver.disconnect(); } catch {}
+      }
       Patcher.clean();
-      setTimeout(() => { this.el?.remove(); document.getElementById("punn-style")?.remove(); window.__punnLock = false; }, 1000);
+      setTimeout(() => { 
+        this.el?.remove(); 
+        document.getElementById("punn-style")?.remove(); 
+        window.__punnLock = false; 
+      }, 800);
     },
 
     setTask(id, data) {
@@ -346,12 +452,16 @@
 
     removeTask(id) {
       const t = this.tasks.get(id);
-      if (t) { t._removing = true; this.render(); setTimeout(() => { this.tasks.delete(id); this.render(); }, 500); }
+      if (t) { 
+        t._removing = true; 
+        this.render(); 
+        setTimeout(() => { this.tasks.delete(id); this.render(); }, 400); 
+      }
     },
 
     log(msg, type = "info") {
-      const colors = { info: CONFIG.C1, ok: CONFIG.OK, warn: CONFIG.WARN, err: CONFIG.ERR, dim: "#555" };
-      console.log(`%c[PUNN] %c${msg}`, `color:${CONFIG.C1};font-weight:bold`, `color:${colors[type]||colors.info}`);
+      const colors = { info: "#a78bfa", ok: "#34d399", warn: "#fbbf24", err: "#f87171", dim: "#475569" };
+      console.log(`%c[PUNN] %c${msg}`, `color:#a78bfa;font-weight:bold`, `color:${colors[type] || colors.info}`);
       const box = document.getElementById("punn-log");
       if (!box) return;
       const el = document.createElement("div");
@@ -365,26 +475,43 @@
     render() {
       const body = document.getElementById("punn-body");
       if (!body) return;
-      if (!this.tasks.size) return (body.innerHTML = `<div class="punn-empty">◈ Waiting for quests...</div>`);
+      if (!this.tasks.size) {
+        body.innerHTML = `<div class="punn-empty">◈ Waiting for quests...</div>`;
+        return;
+      }
 
       body.innerHTML = "";
       const sorted = [...this.tasks.entries()].sort((a, b) => {
-        const order = (t) => t.status === "done" ? 3 : t.status === "warn" ? 2 : t.status === "queue" ? 1 : 0;
+        const order = (t) => 
+          ["claimed", "claimed_no_code"].includes(t.status) ? 4 
+          : t.status === "done" ? 3 
+          : t.status === "warn" || t.status === "claim_failed" ? 2 
+          : t.status === "queue" ? 1 : 0;
         return order(a[1]) - order(b[1]);
       });
+
+      const isLight = document.body.classList.contains("theme-light") || document.documentElement.classList.contains("theme-light");
 
       for (const [id, t] of sorted) {
         const pct = t.max > 0 ? Math.min(100, (t.cur / t.max) * 100).toFixed(1) : 0;
         let icon = I.BOLT, badge = "", sc = "";
 
         if (t.status === "done") {
-          icon = I.CHECK; badge = `<span class="p-badge p-b-done">✓ DONE</span>`; sc = "s-done";
+          icon = I.CHECK; badge = `<span class="p-badge p-b-done">✓ done</span>`; sc = "s-done";
+        } else if (t.status === "claiming") {
+          icon = I.CLOCK; badge = `<span class="p-badge p-b-warn">claiming...</span>`; sc = "s-claiming";
+        } else if (t.status === "claimed" || t.status === "claimed_no_code") {
+          icon = I.CHECK; badge = `<span class="p-badge p-b-done">✓ claimed</span>`; sc = "s-done";
+        } else if (t.status === "captcha") {
+          icon = I.WARN; badge = `<span class="p-badge p-b-warn">captcha</span>`; sc = "s-warn";
+        } else if (t.status === "claim_failed") {
+          icon = I.WARN; badge = `<span class="p-badge p-b-warn">fail</span>`; sc = "s-warn";
         } else if (t.status === "warn") {
-          icon = I.WARN; badge = `<span class="p-badge p-b-warn">SKIP</span>`; sc = "s-warn";
+          icon = I.WARN; badge = `<span class="p-badge p-b-warn">skipped</span>`; sc = "s-warn";
         } else if (t.status === "queue") {
-          icon = I.CLOCK; badge = `<span class="p-badge p-b-queue">QUEUE</span>`; sc = "s-queue";
+          icon = I.CLOCK; badge = `<span class="p-badge p-b-queue">queue</span>`; sc = "s-queue";
         } else {
-          badge = `<span class="p-badge p-b-live">LIVE</span>`;
+          badge = `<span class="p-badge p-b-live">live</span>`;
           if (t.type === "VIDEO") icon = I.PLAY;
           else if (t.type === "GAME") icon = I.GAME;
           else if (t.type === "STREAM") icon = I.STREAM;
@@ -395,8 +522,8 @@
           ? `~${fmt(Math.ceil(t.max - t.cur))}`
           : `${Math.floor(t.cur)}/${t.max}s`;
 
-        body.innerHTML += `
-          <div class="punn-card ${sc} ${t._removing ? 's-rm' : ''}">
+        let contentHtml = `
+          <div class="p-meta">
             <div class="p-ico">${icon}</div>
             <div class="p-body">
               <div class="p-row1">
@@ -409,16 +536,51 @@
               </div>
               <div class="p-track"><div class="p-fill" style="width:${pct}%"></div></div>
             </div>
+          </div>
+        `;
+
+        if (t.status === "claimed" && t.code) {
+          contentHtml += `
+            <div style="margin-top:10px; display:flex; gap:8px; width:100%; animation: pIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+              <input type="text" readonly value="${t.code}" style="flex:1; background:${isLight ? '#e2e8f0' : '#09090b'}; border:1px solid var(--punn-card-border); color:#34d399; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 10px; border-radius:8px; outline:none;" onclick="this.select()">
+              <button style="background:linear-gradient(135deg, #34d399, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-size:10px; cursor:pointer; font-weight:800; transition:all 0.25s;" onclick="navigator.clipboard.writeText('${t.code}'); this.innerText='✓'; setTimeout(()=>this.innerText='COPY', 2000)">COPY</button>
+            </div>
+          `;
+        } else if (t.status === "claimed_no_code") {
+          contentHtml += `
+            <div style="margin-top:8px; font-size:11px; color:var(--punn-ok); font-weight:600; animation: pIn 0.3s ease-out; display:flex; align-items:center; gap:6px;">
+              <span>🎁 เคลมสิทธิ์แล้ว! ตรวจสอบในหน้าคลังของขวัญ (Gift Inventory) บน Discord</span>
+            </div>
+          `;
+        } else if (t.status === "captcha") {
+          contentHtml += `
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px; width:100%; animation: pIn 0.3s ease-out;">
+              <span style="font-size:10.5px; color:var(--punn-warn); font-weight:700;">🔒 กรุณาติ๊กช่องด้านล่างเพื่อแก้แคปช่า:</span>
+              <div id="punn-captcha-${id}" style="min-height:80px; display:flex; justify-content:center; background:rgba(0,0,0,0.15); border-radius:10px; padding:8px; border:1px dashed var(--punn-card-border);"></div>
+            </div>
+          `;
+        } else if (t.status === "claim_failed") {
+          contentHtml += `
+            <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px; font-size:10px; color:var(--punn-err); animation: pIn 0.3s ease-out;">
+              <span>❌ ไม่สามารถรับรางวัลได้: ${t.errMsg || "ข้อผิดพลาดที่ไม่รู้จัก"}</span>
+              <button style="align-self:flex-start; background:rgba(248,113,113,0.1); color:var(--punn-err); border:1px solid rgba(248,113,113,0.25); padding:4px 10px; border-radius:8px; cursor:pointer; font-size:9px; font-weight:700; transition: all 0.2s;" onclick="window.open('https://discord.com/blog/discord-quests-guide', '_blank')">เปิดหน้าต่างเควสเพื่อเคลมเอง</button>
+            </div>
+          `;
+        }
+
+        body.innerHTML += `
+          <div class="punn-card ${sc} ${t._removing ? 's-rm' : ''}">
+            ${contentHtml}
           </div>`;
       }
     },
   };
 
-  // ──────────────────────────── TRAFFIC QUEUE ────────────────────────────
+  // ─── 6. INTERACTIVE TRAFFIC QUEUE (ANTI-RATE LIMIT) ───
   const Traffic = {
     q: [], busy: false,
     async send(url, body, retries = 0) {
-      if (!CONFIG.RUNNING) throw "Stopped";
+      if (!CONFIG.RUNNING) throw "Engine stopped";
       return new Promise((ok, fail) => { this.q.push({ url, body, ok, fail, retries }); this.run(); });
     },
     async run() {
@@ -431,26 +593,26 @@
           r.ok(await Mods.API.post({ url: r.url, body: r.body }));
         } catch (e) {
           if (e.status === 429) {
-            const wait = (e.body?.retry_after || 5) * 1000;
-            UI.log(`⏱ Rate limit — waiting ${(wait/1000).toFixed(0)}s`, "warn");
+            const wait = (e.body?.retry_after || 6) * 1000;
+            UI.log(`⏱ Rate limit — Waiting ${(wait/1000).toFixed(1)}s`, "warn");
             this.q.unshift(r);
             await sleep(wait + 1000);
           } else if (r.retries < CONFIG.MAX_RETRIES) {
-            UI.log(`⚠ Retry ${r.retries + 1}/${CONFIG.MAX_RETRIES}`, "dim");
+            UI.log(`⚠ API Failed, retrying ${r.retries + 1}/${CONFIG.MAX_RETRIES}`, "dim");
             r.retries++;
             this.q.unshift(r);
-            await sleep(2000);
+            await sleep(2200);
           } else {
             r.fail(e);
           }
         }
-        await sleep(CONFIG.REQUEST_DELAY + rnd(-500, 800));
+        await sleep(CONFIG.REQUEST_DELAY + rnd(-600, 1000));
       }
       this.busy = false;
     },
   };
 
-  // ──────────────────────────── MODULES ────────────────────────────
+  // ─── 7. INTERFACES & DYNAMIC DISCORD WRAPPER ───
   const EVT = { HB: "QUESTS_SEND_HEARTBEAT_SUCCESS", GAME: "RUNNING_GAMES_CHANGE", RPC: "LOCAL_ACTIVITY_UPDATE" };
   let Mods = {};
 
@@ -516,7 +678,9 @@
     }
   }
 
-  // ──────────────────────────── GAME PATCHER ────────────────────────────
+
+
+  // ─── 8. RUNTIME ACTIVITY PATCHER ───
   const Patcher = {
     games: [], origGet: null, origPID: null, on: false,
     init(store) {
@@ -549,7 +713,7 @@
     clean() { this.games = []; this.unpatch(); },
   };
 
-  // ──────────────────────────── TASK RUNNERS ────────────────────────────
+  // ─── 9. QUESTER MODULE (TASK ENGINE) ───
   const Quester = {
     clean(n) { return n.replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, " "); },
 
@@ -567,7 +731,7 @@
       }
     },
 
-    // ── VIDEO ──
+    // ── VIDEO SPOOFING ──
     async doVideo(quest, task, userStatus) {
       let cur = userStatus.progress?.[task.taskKey]?.value ?? 0;
       const t0 = new Date(userStatus.enrolledAt).getTime();
@@ -578,7 +742,7 @@
 
       while (cur < task.target && CONFIG.RUNNING) {
         const maxOk = Math.floor((Date.now() - t0) / 1000) + CONFIG.VIDEO_MAX_FUTURE;
-        const speed = CONFIG.VIDEO_SPEED + rnd(-1, 2); // randomize speed
+        const speed = CONFIG.VIDEO_SPEED + rnd(-1, 2);
         const next = cur + speed;
 
         if (maxOk - cur >= speed) {
@@ -604,31 +768,31 @@
       if (CONFIG.RUNNING) this.complete(quest, task);
     },
 
-    // ── GAME (PLAY_ON_DESKTOP) ──
+    // ── GAME SPOOFING ──
     async doGame(quest, task, userStatus) {
       if (!isApp) {
-        UI.log(`⚠ ${task.name} — Desktop App only`, "warn");
+        UI.log(`⚠ ${task.name} — Desktop App Only`, "warn");
         UI.setTask(quest.id, { name: task.name, type: "GAME", cur: 0, max: task.target, status: "warn" });
         return;
       }
       return this.doDesktop(quest, task, "GAME", "PLAY_ON_DESKTOP", userStatus);
     },
 
-    // ── STREAM ──
+    // ── STREAM SPOOFING ──
     async doStream(quest, task, userStatus) {
       if (!isApp) {
-        UI.log(`⚠ ${task.name} — Desktop App only`, "warn");
+        UI.log(`⚠ ${task.name} — Desktop App Only`, "warn");
         UI.setTask(quest.id, { name: task.name, type: "STREAM", cur: 0, max: task.target, status: "warn" });
         return;
       }
       return this.doDesktop(quest, task, "STREAM", "STREAM_ON_DESKTOP", userStatus);
     },
 
-    // ── GENERIC DESKTOP (Game/Stream) ──
+    // ── DESKTOP SPOOF MANAGER ──
     async doDesktop(quest, task, type, key, userStatus) {
       if (!CONFIG.RUNNING) return;
       const app = await this.getAppInfo(task.appId, task.name);
-      const pid = rnd(10000, 50000);
+      const pid = rnd(12000, 52000);
 
       const game = {
         id: app.id, name: app.name, icon: app.icon,
@@ -650,14 +814,14 @@
       }
 
       UI.setTask(quest.id, { name: task.name, type, cur: 0, max: task.target, status: "run" });
-      UI.log(`🎮 Spoofed: ${app.name} [PID:${pid}]`, "dim");
+      UI.log(`🎮 Registered Virtual Activity: ${app.name} [PID:${pid}]`, "dim");
 
       return new Promise((resolve) => {
         let staleCount = 0;
         let lastProg = -1;
 
         const timer = setTimeout(() => {
-          UI.log(`⏰ Timeout: ${task.name}`, "err");
+          UI.log(`⏰ Spoof timeout: ${task.name}`, "err");
           done(); resolve();
         }, CONFIG.MAX_TASK_TIME);
 
@@ -665,14 +829,10 @@
           if (!CONFIG.RUNNING) { done(); resolve(); return; }
           if (d.questId !== quest.id) return;
 
-          let prog;
-          if (quest.config.configVersion === 1) {
-            prog = d.userStatus.streamProgressSeconds ?? 0;
-          } else {
-            prog = d.userStatus.progress?.[key]?.value ?? 0;
-          }
+          let prog = quest.config.configVersion === 1 
+            ? (d.userStatus.streamProgressSeconds ?? 0)
+            : (d.userStatus.progress?.[key]?.value ?? 0);
 
-          // ── Update progress ──
           if (prog !== lastProg) {
             lastProg = prog;
             staleCount = 0;
@@ -692,18 +852,25 @@
         let _resolved = false;
         const done = () => {
           if (_resolved) return; _resolved = true;
-          clearTimeout(timer); cleanup(); Mods.Dispatcher.unsubscribe(EVT.HB, onHB); _activeCleanups.delete(done);
+          clearTimeout(timer); 
+          cleanup(); 
+          Mods.Dispatcher.unsubscribe(EVT.HB, onHB); 
+          _activeCleanups.delete(done);
         };
         _activeCleanups.add(done);
         Mods.Dispatcher.subscribe(EVT.HB, onHB);
       });
     },
 
-    // ── ACTIVITY ──
+    // ── DISCORD ACTIVITY SPOOFING ──
     async doActivity(quest, task) {
       const chan = Mods.ChanStore?.getSortedPrivateChannels()[0]?.id
         ?? Object.values(Mods.GuildChanStore?.getAllGuilds() || {}).find(g => g?.VOCAL?.length)?.VOCAL[0]?.channel?.id;
-      if (!chan) return UI.log(`❌ No channel for ${task.name}`, "err");
+      
+      if (!chan) {
+        UI.setTask(quest.id, { name: task.name, type: "ACTIVITY", cur: 0, max: task.target, status: "warn" });
+        return UI.log(`❌ No active voice channels found for activity: ${task.name}`, "err");
+      }
 
       const sKey = `call:${chan}:${rnd(1000, 9999)}`;
       let cur = 0;
@@ -721,71 +888,107 @@
           }
         } catch {}
         if (Date.now() - t0 > CONFIG.MAX_TASK_TIME) { UI.log(`⏰ Activity timeout`, "err"); break; }
-        await sleep(20000 + rnd(-3000, 5000));
+        await sleep(20000 + rnd(-2000, 4000));
       }
       if (CONFIG.RUNNING && cur >= task.target) this.complete(quest, task);
     },
 
     complete(quest, task) {
       UI.setTask(quest.id, { name: task.name, type: task.type, cur: task.target, max: task.target, status: "done" });
-      UI.log(`✅ ${task.name}`, "ok");
-      try { if (Notification.permission === "granted") new Notification(`${CONFIG.NAME}: Done!`, { body: task.name }); } catch {}
-      setTimeout(() => UI.removeTask(quest.id), CONFIG.REMOVE_DELAY);
+      UI.log(`✓ Quest Accomplished: ${task.name} (กรุณากดรับรางวัลด้วยตนเองใน Discord)`, "ok");
+      try { if (Notification.permission === "granted") new Notification(`PUNN: Quest Finished!`, { body: task.name }); } catch {}
     },
+
+    // ── REWARD CLAIM PIPELINE (DISABLED) ──
+    // Auto-claiming has been disabled. Quests can be claimed manually in Discord Settings -> Gift Inventory.
   };
 
-  // ──────────────────────────── CONCURRENCY ────────────────────────────
+  // ─── 10. POOL CONCURRENCY CONTROLLER ───
   async function runPool(tasks, limit) {
     const running = [];
     for (const fn of tasks) {
       if (!CONFIG.RUNNING) break;
       const p = fn().then(() => running.splice(running.indexOf(p), 1));
       running.push(p);
-      // ── เว้นช่วงระหว่างเกม + randomize เพื่อให้ดูเป็นธรรมชาติ ──
-      await sleep(CONFIG.HEARTBEAT_STAGGER + rnd(-1000, 2000));
+      await sleep(CONFIG.HEARTBEAT_STAGGER + rnd(-1000, 1500));
       if (running.length >= limit) await Promise.race(running);
     }
     return Promise.all(running);
   }
 
-  // ──────────────────────────── MAIN ────────────────────────────
+  // ─── 11. ENTRY SYSTEM MAIN ───
   const TASK_KEYS = ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE", "PLAY_ON_DESKTOP", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY"];
 
   async function main() {
     UI.init();
-    UI.log(`${isApp ? "⚡ Desktop App" : "🌐 Browser"} detected`, isApp ? "ok" : "warn");
-    if (!isApp) UI.log("⚠ Keep this tab active — background tabs may throttle timers", "warn");
+    UI.log(`${isApp ? "⚡ Discord App Client" : "🌐 Discord Web Client"} Hooked Successfully`, isApp ? "ok" : "warn");
+    if (!isApp) UI.log("📌 Browser environment active — maintain tab focus to prevent throttling.", "warn");
 
-    if (!loadModules()) return UI.log("Module load failed — try refreshing Discord", "err");
+    if (!loadModules()) return UI.log("Hooking rejected — Please relaunch or reload Discord", "err");
 
     let cycle = 1;
     while (CONFIG.RUNNING) {
-      UI.log(`-- Cycle ${cycle} --`, "info");
+      UI.log(`-- Processing Cycle ${cycle} --`, "info");
 
       const getQ = () => Mods.QuestStore.quests instanceof Map ? [...Mods.QuestStore.quests.values()] : Object.values(Mods.QuestStore.quests);
       let quests = getQ();
       const now = Date.now();
 
-      // ── Auto-enroll ──
+      // ── Auto Enroll Active Quests ──
       const toEnroll = quests.filter(q => !q.userStatus?.completedAt && new Date(q.config.expiresAt).getTime() > now && !q.userStatus?.enrolledAt);
       if (toEnroll.length) {
-        UI.log(`📝 Enrolling ${toEnroll.length} quests...`, "warn");
+        UI.log(`📝 Auto enrolling ${toEnroll.length} eligible quests...`, "warn");
         for (const q of toEnroll) {
           if (!CONFIG.RUNNING) break;
-          try { await Traffic.send(`/quests/${q.id}/enroll`, { location: 1 }); UI.log(`  ✓ ${q.config.messages.questName}`, "ok"); } catch {}
+          try { 
+            await Traffic.send(`/quests/${q.id}/enroll`, { location: 1 }); 
+            UI.log(`  ✓ Registered: ${q.config.messages.questName}`, "ok"); 
+          } catch {}
         }
         await sleep(2000);
         quests = getQ();
       }
 
-      // ── Filter active ──
+      // ── Show Completed but Unclaimed Quests in UI ──
+      const completedUnclaimed = quests.filter(q =>
+        q.userStatus?.completedAt &&
+        !q.userStatus?.claimedAt &&
+        new Date(q.config.expiresAt).getTime() > now
+      );
+
+      for (const q of completedUnclaimed) {
+        const cfg = q.config.taskConfig ?? q.config.taskConfigV2;
+        const keys = cfg ? Object.keys(cfg.tasks) : [];
+        const taskKey = TASK_KEYS.find(k => keys.includes(k)) || keys[0];
+        const target = cfg && taskKey ? cfg.tasks[taskKey].target : 1;
+        const type = taskKey?.includes("VIDEO") ? "VIDEO"
+          : taskKey === "PLAY_ON_DESKTOP" ? "GAME"
+          : taskKey === "STREAM_ON_DESKTOP" ? "STREAM"
+          : "ACTIVITY";
+
+        const t = { id: q.id, appId: q.config.application?.id, name: q.config.messages.questName, target, type, taskKey };
+        if (!UI.tasks.has(q.id)) {
+          UI.setTask(q.id, { name: t.name, type, cur: target, max: target, status: "done" });
+        }
+      }
+
+      // ── Filter remaining active quests ──
       const active = quests.filter(q =>
         !q.userStatus?.completedAt &&
         q.userStatus?.enrolledAt &&
         new Date(q.config.expiresAt).getTime() > now
       );
 
-      if (!active.length) { UI.log("v No active quests - waiting 30s...", "dim"); await sleep(30000); cycle++; continue; }
+      if (!active.length) {
+        if (completedUnclaimed.length > 0) {
+          await sleep(5000);
+        } else {
+          UI.log("💤 All tasks clear. Monitoring for updates in 30s...", "dim");
+          await sleep(30000);
+        }
+        cycle++;
+        continue;
+      }
 
       const videos = [], games = [];
 
@@ -795,7 +998,6 @@
         const taskKey = TASK_KEYS.find(k => keys.includes(k));
 
         if (!taskKey && q.config.application?.id) {
-          // fallback to game
           const target = cfg.tasks[keys[0]]?.target;
           if (target) {
             const t = { id: q.id, appId: q.config.application.id, name: q.config.messages.questName, target, type: "GAME", taskKey: keys[0] };
@@ -806,7 +1008,7 @@
           }
           continue;
         }
-        if (!taskKey) { UI.log(`❓ Unknown task: ${q.config.messages.questName}`, "warn"); continue; }
+        if (!taskKey) { UI.log(`❓ Unknown quest blueprint: ${q.config.messages.questName}`, "warn"); continue; }
 
         const target = cfg.tasks[taskKey].target;
         const prog = q.userStatus?.progress?.[taskKey]?.value ?? 0;
@@ -836,19 +1038,18 @@
       }
 
       if (videos.length + games.length > 0) {
-        UI.log(`📦 ${videos.length} video + ${games.length} game/stream`, "info");
+        UI.log(`📦 Queueing ${videos.length} videos + ${games.length} virtual clients`, "info");
         await Promise.all([
           runPool(games, CONFIG.GAME_CONCURRENCY),
           runPool(videos, 3),
         ]);
       } else {
-        if (!active.length) break;
         await sleep(5000);
       }
 
       if (!CONFIG.RUNNING) break;
-      UI.log(`Cycle ${cycle} done - rescanning...`, "ok");
-      await sleep(3000);
+      UI.log(`Cycle ${cycle} complete - refreshing state...`, "ok");
+      await sleep(3500);
       cycle++;
     }
 
@@ -857,7 +1058,7 @@
 
   main().catch((e) => {
     console.error(e);
-    UI.log(e.message || "Fatal error", "err");
+    UI.log(e.message || "Fatal Engine Exception", "err");
     UI.shutdown();
   });
 })();
