@@ -208,13 +208,14 @@
         .punn-btn-stop:hover { background:rgba(248,113,113,0.15); opacity:1; box-shadow:0 0 10px rgba(248,113,113,0.25); }
 
         #punn-body {
-          padding:12px 14px; max-height:420px; overflow-y:auto; flex-grow:1;
+          padding:12px 14px; max-height:240px; overflow-y:auto; flex-grow:1;
           display:flex; flex-direction:column; gap:8px;
           transition:max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         #punn-body.collapsed { max-height:0; padding:0 14px; overflow:hidden; }
-        #punn-body::-webkit-scrollbar { width:4px; }
-        #punn-body::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.12); border-radius:4px; }
+        #punn-body::-webkit-scrollbar { width:5px; }
+        #punn-body::-webkit-scrollbar-thumb { background:var(--punn-card-border); border-radius:4px; }
+        #punn-body::-webkit-scrollbar-thumb:hover { background:rgba(167,139,250,0.5); }
 
         .punn-empty {
           text-align:center; padding:36px; color:var(--punn-text-secondary);
@@ -226,6 +227,7 @@
           background:var(--punn-card-bg); border-radius:16px;
           border:1px solid var(--punn-card-border);
           transition:all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); position:relative; overflow:hidden;
+          flex-shrink:0;
         }
         .punn-card:hover { 
           background:rgba(255,255,255,0.02); 
