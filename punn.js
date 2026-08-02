@@ -6,7 +6,7 @@
  *  ██║     ╚██████╔╝██║ ╚████║██║ ╚████║
  *  ╚═╝      ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═══╝
  *
- *  PUNN Quest Engine v3.0 (Modern 2026 Edition)
+ *  PUNN Quest Engine v3.5 (Modern 2026 Edition)
  *  Discord Quest Auto-Completer & Activity Spoofer
  *
  *  Features:
@@ -23,11 +23,12 @@
   // ─── 1. DESIGN TOKENS & SYSTEM CONFIG ───
   const CONFIG = {
     NAME: "PUNN",
-    VERSION: "v3.0",
+    VERSION: "v3.5",
     RUNNING: true,
     MAX_TASK_TIME: 25 * 60 * 1000,
     MAX_RETRIES: 3,
-    GAME_CONCURRENCY: 5,
+    MAX_RATE_LIMIT_RETRIES: 8,
+    GAME_CONCURRENCY: 3,
     REQUEST_DELAY: 2200,
     REMOVE_DELAY: 3500,
     HEARTBEAT_STAGGER: 4500,
@@ -73,6 +74,12 @@
   const isApp = typeof DiscordNative !== "undefined";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const rnd = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+  const escapeHtml = (value) => String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
   const fmt = (s) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -376,7 +383,7 @@
         this.el.style.right = "auto";
         e.preventDefault();
       };
-      document.onmousemove = (e) => {
+      const onMouseMove = (e) => {
         if (!drag) return;
         const rect = this.el.getBoundingClientRect();
         const nx = Math.max(0, Math.min(window.innerWidth - rect.width, ix + (e.clientX - sx)));
@@ -384,7 +391,7 @@
         this.el.style.left = `${nx}px`;
         this.el.style.top = `${ny}px`;
       };
-      document.onmouseup = () => {
+      const onMouseUp = () => {
         if (drag) {
           drag = false;
           Store.set("pos", { top: this.el.style.top, left: this.el.style.left, right: "auto" });
@@ -394,12 +401,22 @@
       document.getElementById("punn-min").onclick = () => this.toggleCollapse();
       document.getElementById("punn-stop").onclick = () => this.shutdown();
       
-      document.addEventListener("keydown", (e) => {
+      const onKeyDown = (e) => {
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
         if (e.key === ">" || (e.shiftKey && e.key === ".")) {
           this.el.style.display = this.el.style.display === "none" ? "flex" : "none";
         }
-      });
+      };
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+      document.addEventListener("keydown", onKeyDown);
+      const removeDocumentHandlers = () => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.removeEventListener("keydown", onKeyDown);
+        _activeCleanups.delete(removeDocumentHandlers);
+      };
+      _activeCleanups.add(removeDocumentHandlers);
 
       // ── Dynamic Theme Switching Observer ──
       this.themeObserver = new MutationObserver(() => this.syncTheme());
@@ -434,6 +451,7 @@
       if (!CONFIG.RUNNING) return;
       CONFIG.RUNNING = false;
       this.log("Shutting down engine...", "warn");
+      Traffic.stop(new Error("PUNN engine stopped by user"));
       _activeCleanups.forEach(fn => { try { fn(); } catch {} });
       _activeCleanups.clear();
       if (this.themeObserver) {
@@ -468,7 +486,12 @@
       if (!box) return;
       const el = document.createElement("div");
       el.className = `p-log p-l-${type}`;
-      el.innerHTML = `<span class="p-ts">${new Date().toLocaleTimeString().split(" ")[0]}</span><span>${msg}</span>`;
+      const timestamp = document.createElement("span");
+      timestamp.className = "p-ts";
+      timestamp.textContent = new Date().toLocaleTimeString().split(" ")[0];
+      const message = document.createElement("span");
+      message.textContent = String(msg);
+      el.append(timestamp, message);
       box.appendChild(el);
       box.scrollTop = box.scrollHeight;
       while (box.children.length > 50) box.firstChild.remove();
@@ -523,17 +546,20 @@
         const eta = t.status === "run" && t.cur > 0
           ? `~${fmt(Math.ceil(t.max - t.cur))}`
           : `${Math.floor(t.cur)}/${t.max}s`;
+        const safeName = escapeHtml(t.name);
+        const safeType = escapeHtml(t.type || "");
+        const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, "");
 
         let contentHtml = `
           <div class="p-meta">
             <div class="p-ico">${icon}</div>
             <div class="p-body">
               <div class="p-row1">
-                <div class="p-name" title="${t.name}">${t.name}</div>
+                <div class="p-name" title="${safeName}">${safeName}</div>
                 ${badge}
               </div>
               <div class="p-row2">
-                <span>${t.type || ''}</span>
+                <span>${safeType}</span>
                 <span class="p-pct">${pct > 0 ? Math.floor(pct) + '%' : eta}</span>
               </div>
               <div class="p-track"><div class="p-fill" style="width:${pct}%"></div></div>
@@ -542,10 +568,11 @@
         `;
 
         if (t.status === "claimed" && t.code) {
+          const safeCode = escapeHtml(t.code);
           contentHtml += `
             <div style="margin-top:10px; display:flex; gap:8px; width:100%; animation: pIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
-              <input type="text" readonly value="${t.code}" style="flex:1; background:${isLight ? '#e2e8f0' : '#09090b'}; border:1px solid var(--punn-card-border); color:#34d399; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 10px; border-radius:8px; outline:none;" onclick="this.select()">
-              <button style="background:linear-gradient(135deg, #34d399, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-size:10px; cursor:pointer; font-weight:800; transition:all 0.25s;" onclick="navigator.clipboard.writeText('${t.code}'); this.innerText='✓'; setTimeout(()=>this.innerText='COPY', 2000)">COPY</button>
+              <input type="text" readonly value="${safeCode}" style="flex:1; background:${isLight ? '#e2e8f0' : '#09090b'}; border:1px solid var(--punn-card-border); color:#34d399; font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 10px; border-radius:8px; outline:none;" onclick="this.select()">
+              <button style="background:linear-gradient(135deg, #34d399, #059669); color:#fff; border:none; padding:6px 14px; border-radius:8px; font-size:10px; cursor:pointer; font-weight:800; transition:all 0.25s;" onclick="navigator.clipboard.writeText(this.previousElementSibling.value); this.innerText='✓'; setTimeout(()=>this.innerText='COPY', 2000)">COPY</button>
             </div>
           `;
         } else if (t.status === "claimed_no_code") {
@@ -558,13 +585,13 @@
           contentHtml += `
             <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px; width:100%; animation: pIn 0.3s ease-out;">
               <span style="font-size:10.5px; color:var(--punn-warn); font-weight:700;">🔒 กรุณาติ๊กช่องด้านล่างเพื่อแก้แคปช่า:</span>
-              <div id="punn-captcha-${id}" style="min-height:80px; display:flex; justify-content:center; background:rgba(0,0,0,0.15); border-radius:10px; padding:8px; border:1px dashed var(--punn-card-border);"></div>
+              <div id="punn-captcha-${safeId}" style="min-height:80px; display:flex; justify-content:center; background:rgba(0,0,0,0.15); border-radius:10px; padding:8px; border:1px dashed var(--punn-card-border);"></div>
             </div>
           `;
         } else if (t.status === "claim_failed") {
           contentHtml += `
             <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px; font-size:10px; color:var(--punn-err); animation: pIn 0.3s ease-out;">
-              <span>❌ ไม่สามารถรับรางวัลได้: ${t.errMsg || "ข้อผิดพลาดที่ไม่รู้จัก"}</span>
+              <span>❌ ไม่สามารถรับรางวัลได้: ${escapeHtml(t.errMsg || "ข้อผิดพลาดที่ไม่รู้จัก")}</span>
               <button style="align-self:flex-start; background:rgba(248,113,113,0.1); color:var(--punn-err); border:1px solid rgba(248,113,113,0.25); padding:4px 10px; border-radius:8px; cursor:pointer; font-size:9px; font-weight:700; transition: all 0.2s;" onclick="window.open('https://discord.com/blog/discord-quests-guide', '_blank')">เปิดหน้าต่างเควสเพื่อเคลมเอง</button>
             </div>
           `;
@@ -580,22 +607,37 @@
 
   // ─── 6. INTERACTIVE TRAFFIC QUEUE (ANTI-RATE LIMIT) ───
   const Traffic = {
-    q: [], busy: false,
+    q: [], busy: false, stopped: false,
     async send(url, body, retries = 0) {
-      if (!CONFIG.RUNNING) throw "Engine stopped";
-      return new Promise((ok, fail) => { this.q.push({ url, body, ok, fail, retries }); this.run(); });
+      if (!CONFIG.RUNNING || this.stopped) throw new Error("Engine stopped");
+      return new Promise((ok, fail) => { this.q.push({ url, body, ok, fail, retries, rateLimitRetries: 0 }); this.run(); });
+    },
+    stop(reason = new Error("Traffic queue stopped")) {
+      this.stopped = true;
+      const pending = this.q.splice(0);
+      pending.forEach((request) => request.fail(reason));
     },
     async run() {
       if (this.busy || !this.q.length) return;
       this.busy = true;
       while (this.q.length) {
-        if (!CONFIG.RUNNING) { this.q = []; this.busy = false; return; }
+        if (!CONFIG.RUNNING || this.stopped) {
+          this.stop(new Error("Engine stopped before queued request completed"));
+          this.busy = false;
+          return;
+        }
         const r = this.q.shift();
         try {
           r.ok(await Mods.API.post({ url: r.url, body: r.body }));
         } catch (e) {
-          if (e.status === 429) {
-            const wait = (e.body?.retry_after || 6) * 1000;
+          const status = Number(e?.status);
+          if ([400, 401, 403, 404].includes(status)) {
+            UI.log(`API rejected request (${status}) — not retrying`, "err");
+            r.fail(e);
+          } else if (status === 429 && r.rateLimitRetries < CONFIG.MAX_RATE_LIMIT_RETRIES) {
+            r.rateLimitRetries++;
+            const retryAfter = Number(e.body?.retry_after);
+            const wait = Math.min(60000, Math.max(1000, (Number.isFinite(retryAfter) ? retryAfter : 6) * 1000));
             UI.log(`⏱ Rate limit — Waiting ${(wait/1000).toFixed(1)}s`, "warn");
             this.q.unshift(r);
             await sleep(wait + 1000);
@@ -651,6 +693,19 @@
           () => find(e => e?.Ay?.getSFWDefaultChannel)?.Ay,
           () => find(e => e?.ZP?.getSFWDefaultChannel)?.ZP,
           () => find(e => e?.default?.getSFWDefaultChannel)?.default,
+        ]),
+        VoiceStateStore: pick([
+          () => find(e => e?.A?.getVoiceStateForUser || e?.A?.getVoiceStatesForUser)?.A,
+          () => find(e => e?.Z?.getVoiceStateForUser || e?.Z?.getVoiceStatesForUser)?.Z,
+          () => find(e => e?.default?.getVoiceStateForUser || e?.default?.getVoiceStatesForUser)?.default,
+        ]),
+        UserStore: pick([
+          () => find(e => e?.A?.getCurrentUser)?.A,
+          () => find(e => e?.Z?.getCurrentUser)?.Z,
+          () => find(e => e?.default?.getCurrentUser)?.default,
+          () => find(e => e?.A?.__proto__?.getCurrentUser)?.A,
+          () => find(e => e?.Z?.__proto__?.getCurrentUser)?.Z,
+          () => find(e => e?.default?.__proto__?.getCurrentUser)?.default,
         ]),
         Dispatcher: pick([
           () => find(e => e?.h?.__proto__?.flushWaitQueue)?.h,
@@ -717,7 +772,7 @@
 
   // ─── 9. QUESTER MODULE (TASK ENGINE) ───
   const Quester = {
-    clean(n) { return n.replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, " "); },
+    clean(n) { return String(n || "DiscordQuest").replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, " "); },
 
     async getAppInfo(id, name) {
       try {
@@ -765,9 +820,19 @@
       }
 
       if (!done && CONFIG.RUNNING) {
-        try { await Traffic.send(`/quests/${quest.id}/video-progress`, { timestamp: task.target }); } catch {}
+        try {
+          const result = await Traffic.send(`/quests/${quest.id}/video-progress`, { timestamp: task.target });
+          done = result?.body?.completed_at != null || result?.body?.completedAt != null;
+        } catch (error) {
+          UI.log(`Video completion could not be confirmed: ${error?.message || error}`, "warn");
+        }
       }
-      if (CONFIG.RUNNING) this.complete(quest, task);
+      if (CONFIG.RUNNING && done) {
+        this.complete(quest, task);
+      } else if (CONFIG.RUNNING) {
+        UI.setTask(quest.id, { name: task.name, type: "VIDEO", cur, max: task.target, status: "warn" });
+        UI.log(`Video progress was sent but completion was not confirmed: ${task.name}`, "warn");
+      }
     },
 
     // ── GAME SPOOFING ──
@@ -777,7 +842,7 @@
         UI.setTask(quest.id, { name: task.name, type: "GAME", cur: 0, max: task.target, status: "warn" });
         return;
       }
-      return this.doDesktop(quest, task, "GAME", "PLAY_ON_DESKTOP", userStatus);
+      return this.doDesktop(quest, task, "GAME", task.taskKey, userStatus);
     },
 
     // ── STREAM SPOOFING ──
@@ -787,12 +852,19 @@
         UI.setTask(quest.id, { name: task.name, type: "STREAM", cur: 0, max: task.target, status: "warn" });
         return;
       }
-      return this.doDesktop(quest, task, "STREAM", "STREAM_ON_DESKTOP", userStatus);
+      return this.doDesktop(quest, task, "STREAM", task.taskKey, userStatus);
     },
 
     // ── DESKTOP SPOOF MANAGER ──
     async doDesktop(quest, task, type, key, userStatus) {
       if (!CONFIG.RUNNING) return;
+      const streamReady = typeof Mods.StreamStore?.getStreamerActiveStreamMetadata === "function";
+      const gameReady = typeof Mods.RunStore?.getRunningGames === "function" && typeof Mods.RunStore?.getGameForPID === "function";
+      if ((type === "STREAM" && !streamReady) || (type !== "STREAM" && !gameReady)) {
+        UI.log(`${type} modules are unavailable in this Discord build: ${task.name}`, "warn");
+        UI.setTask(quest.id, { name: task.name, type, cur: 0, max: task.target, status: "warn" });
+        return;
+      }
       const app = await this.getAppInfo(task.appId, task.name);
       const pid = rnd(12000, 52000);
 
@@ -866,12 +938,15 @@
 
     // ── DISCORD ACTIVITY SPOOFING ──
     async doActivity(quest, task) {
-      const chan = Mods.ChanStore?.getSortedPrivateChannels()[0]?.id
-        ?? Object.values(Mods.GuildChanStore?.getAllGuilds() || {}).find(g => g?.VOCAL?.length)?.VOCAL[0]?.channel?.id;
+      const currentUserId = Mods.UserStore?.getCurrentUser?.()?.id;
+      const directVoiceState = currentUserId ? Mods.VoiceStateStore?.getVoiceStateForUser?.(currentUserId) : null;
+      const voiceStates = currentUserId ? Mods.VoiceStateStore?.getVoiceStatesForUser?.(currentUserId) : null;
+      const voiceState = directVoiceState ?? Object.values(voiceStates || {})[0];
+      const chan = voiceState?.channelId ?? voiceState?.channel_id;
       
       if (!chan) {
         UI.setTask(quest.id, { name: task.name, type: "ACTIVITY", cur: 0, max: task.target, status: "warn" });
-        return UI.log(`❌ No active voice channels found for activity: ${task.name}`, "err");
+        return UI.log(`❌ Join an active voice channel before running activity quest: ${task.name}`, "err");
       }
 
       const sKey = `call:${chan}:${rnd(1000, 9999)}`;
@@ -882,13 +957,19 @@
       while (cur < task.target && CONFIG.RUNNING) {
         try {
           const r = await Traffic.send(`/quests/${quest.id}/heartbeat`, { stream_key: sKey, terminal: false });
-          cur = r.body.progress?.PLAY_ACTIVITY?.value ?? cur + 20;
+          cur = r.body.progress?.[task.taskKey]?.value ?? cur + 20;
           UI.setTask(quest.id, { name: task.name, type: "ACTIVITY", cur, max: task.target, status: "run" });
           if (cur >= task.target) {
             await Traffic.send(`/quests/${quest.id}/heartbeat`, { stream_key: sKey, terminal: true });
             break;
           }
-        } catch {}
+        } catch (error) {
+          const status = Number(error?.status) || "unknown";
+          const hint = status === 403 ? "Join a voice channel and confirm this quest is eligible for your account." : "Check the Discord quest status and try again.";
+          UI.setTask(quest.id, { name: task.name, type: "ACTIVITY", cur, max: task.target, status: "warn" });
+          UI.log(`Activity heartbeat rejected (${status}): ${hint}`, "err");
+          return;
+        }
         if (Date.now() - t0 > CONFIG.MAX_TASK_TIME) { UI.log(`⏰ Activity timeout`, "err"); break; }
         await sleep(20000 + rnd(-2000, 4000));
       }
@@ -908,25 +989,106 @@
   // ─── 10. POOL CONCURRENCY CONTROLLER ───
   async function runPool(tasks, limit) {
     const running = [];
+    const remove = (promise) => {
+      const index = running.indexOf(promise);
+      if (index >= 0) running.splice(index, 1);
+    };
     for (const fn of tasks) {
       if (!CONFIG.RUNNING) break;
-      const p = fn().then(() => running.splice(running.indexOf(p), 1));
+      let p;
+      p = Promise.resolve()
+        .then(fn)
+        .catch((error) => UI.log(`Task failed: ${error?.message || error}`, "err"))
+        .finally(() => remove(p));
       running.push(p);
       await sleep(CONFIG.HEARTBEAT_STAGGER + rnd(-1000, 1500));
       if (running.length >= limit) await Promise.race(running);
     }
-    return Promise.all(running);
+    await Promise.all(running);
   }
 
   // ─── 11. ENTRY SYSTEM MAIN ───
   const TASK_KEYS = ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE", "PLAY_ON_DESKTOP", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY"];
 
+  function selectTaskKey(keys) {
+    const exact = TASK_KEYS.find((key) => keys.includes(key));
+    if (exact) return exact;
+    const patterns = [/VIDEO/i, /STREAM/i, /ACTIVITY/i, /PLAY|GAME|DESKTOP/i];
+    for (const pattern of patterns) {
+      const match = keys.find((key) => pattern.test(key));
+      if (match) return match;
+    }
+    return null;
+  }
+
+  function getTaskType(taskKey) {
+    if (/VIDEO/i.test(taskKey || "")) return "VIDEO";
+    if (/STREAM/i.test(taskKey || "")) return "STREAM";
+    if (/ACTIVITY/i.test(taskKey || "")) return "ACTIVITY";
+    return "GAME";
+  }
+
+  function extractApplicationId(candidate) {
+    if (["string", "number"].includes(typeof candidate) && String(candidate).trim()) return String(candidate);
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        const found = extractApplicationId(item);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (!candidate || typeof candidate !== "object") return null;
+    const direct = candidate.id ?? candidate.applicationId ?? candidate.application_id ?? candidate.appId ?? candidate.app_id;
+    return ["string", "number"].includes(typeof direct) && String(direct).trim() ? String(direct) : null;
+  }
+
+  function scanApplicationId(value, depth = 0, seen = new Set(), path = "") {
+    if (!value || typeof value !== "object" || depth > 6 || seen.has(value)) return null;
+    seen.add(value);
+    for (const [key, candidate] of Object.entries(value)) {
+      const normalized = key.replace(/_/g, "").toLowerCase();
+      const nextPath = path ? `${path}.${normalized}` : normalized;
+      if (normalized.includes("application") || normalized === "appid" || normalized === "appids") {
+        const found = extractApplicationId(candidate);
+        if (found) return found;
+      }
+      if (normalized === "id" && /(application|applications|gameapp)/i.test(path)) {
+        const found = extractApplicationId(candidate);
+        if (found) return found;
+      }
+      const nested = scanApplicationId(candidate, depth + 1, seen, nextPath);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  function resolveApplicationId(quest, cfg, taskKey) {
+    const task = cfg?.tasks?.[taskKey];
+    const directCandidates = [
+      task?.application, task?.applications, task?.applicationId, task?.application_id, task?.applicationIds, task?.application_ids,
+      cfg?.application, cfg?.applications, cfg?.applicationId, cfg?.application_id, cfg?.applicationIds, cfg?.application_ids,
+      quest?.config?.application, quest?.config?.applications,
+      quest?.config?.applicationId, quest?.config?.application_id, quest?.config?.applicationIds, quest?.config?.application_ids,
+      quest?.application, quest?.applications, quest?.applicationId, quest?.application_id,
+    ];
+    for (const candidate of directCandidates) {
+      const found = extractApplicationId(candidate);
+      if (found) return found;
+    }
+    return scanApplicationId(task) || scanApplicationId(cfg) || scanApplicationId(quest?.config);
+  }
+
   async function main() {
     UI.init();
+    window.__punnStatus = { state: "loading", version: CONFIG.VERSION };
     UI.log(`${isApp ? "⚡ Discord App Client" : "🌐 Discord Web Client"} Hooked Successfully`, isApp ? "ok" : "warn");
     if (!isApp) UI.log("📌 Browser environment active — maintain tab focus to prevent throttling.", "warn");
 
-    if (!loadModules()) return UI.log("Hooking rejected — Please relaunch or reload Discord", "err");
+    if (!loadModules()) {
+      window.__punnStatus = { state: "error", version: CONFIG.VERSION, message: "Core modules missing" };
+      return UI.log("Hooking rejected — Please relaunch or reload Discord", "err");
+    }
+    window.__punnStatus = { state: "ready", version: CONFIG.VERSION };
 
     let cycle = 1;
     while (CONFIG.RUNNING) {
@@ -960,15 +1122,12 @@
 
       for (const q of completedUnclaimed) {
         const cfg = q.config.taskConfig ?? q.config.taskConfigV2;
-        const keys = cfg ? Object.keys(cfg.tasks) : [];
-        const taskKey = TASK_KEYS.find(k => keys.includes(k)) || keys[0];
+        const keys = cfg?.tasks ? Object.keys(cfg.tasks) : [];
+        const taskKey = selectTaskKey(keys) || keys[0];
         const target = cfg && taskKey ? cfg.tasks[taskKey].target : 1;
-        const type = taskKey?.includes("VIDEO") ? "VIDEO"
-          : taskKey === "PLAY_ON_DESKTOP" ? "GAME"
-          : taskKey === "STREAM_ON_DESKTOP" ? "STREAM"
-          : "ACTIVITY";
+        const type = getTaskType(taskKey);
 
-        const t = { id: q.id, appId: q.config.application?.id, name: q.config.messages.questName, target, type, taskKey };
+        const t = { id: q.id, appId: resolveApplicationId(q, cfg, taskKey), name: q.config.messages.questName, target, type, taskKey };
         if (!UI.tasks.has(q.id)) {
           UI.setTask(q.id, { name: t.name, type, cur: target, max: target, status: "done" });
         }
@@ -996,32 +1155,49 @@
 
       for (const q of active) {
         const cfg = q.config.taskConfig ?? q.config.taskConfigV2;
-        const keys = Object.keys(cfg.tasks);
-        const taskKey = TASK_KEYS.find(k => keys.includes(k));
-
-        if (!taskKey && q.config.application?.id) {
-          const target = cfg.tasks[keys[0]]?.target;
-          if (target) {
-            const t = { id: q.id, appId: q.config.application.id, name: q.config.messages.questName, target, type: "GAME", taskKey: keys[0] };
-            if (!UI.tasks.has(q.id) || !["run", "done"].includes(UI.tasks.get(q.id).status)) {
-              UI.setTask(q.id, { name: t.name, type: "GAME", cur: 0, max: target, status: "queue" });
-              games.push(() => Quester.doGame(q, t, q.userStatus));
-            }
-          }
+        if (!cfg?.tasks) {
+          UI.log(`Quest configuration is unavailable: ${q.config?.messages?.questName || q.id}`, "warn");
           continue;
         }
-        if (!taskKey) { UI.log(`❓ Unknown quest blueprint: ${q.config.messages.questName}`, "warn"); continue; }
+        const keys = Object.keys(cfg.tasks);
+        let taskKey = selectTaskKey(keys);
+        if (!taskKey) {
+          const fallbackKey = keys[0];
+          const fallbackAppId = resolveApplicationId(q, cfg, fallbackKey);
+          if (fallbackKey && fallbackAppId) {
+            taskKey = fallbackKey;
+            UI.log(`Inferred GAME task key ${fallbackKey}: ${q.config?.messages?.questName || q.id}`, "warn");
+          }
+        }
+        if (!taskKey) {
+          UI.log(`Unknown quest blueprint: ${q.config?.messages?.questName || q.id} [${keys.join(", ")}]`, "warn");
+          continue;
+        }
 
-        const target = cfg.tasks[taskKey].target;
-        const prog = q.userStatus?.progress?.[taskKey]?.value ?? 0;
+        const target = cfg.tasks[taskKey]?.target;
+        if (!Number.isFinite(target) || target <= 0) {
+          UI.log(`Invalid quest target: ${q.config?.messages?.questName || q.id} [${taskKey}]`, "warn");
+          continue;
+        }
+        const prog = q.userStatus?.progress?.[taskKey]?.value ?? q.userStatus?.streamProgressSeconds ?? 0;
         if (prog >= target) continue;
 
-        const type = taskKey.includes("VIDEO") ? "VIDEO"
-          : taskKey === "PLAY_ON_DESKTOP" ? "GAME"
-          : taskKey === "STREAM_ON_DESKTOP" ? "STREAM"
-          : "ACTIVITY";
+        const type = getTaskType(taskKey);
+        const appId = resolveApplicationId(q, cfg, taskKey);
+        if (["GAME", "STREAM"].includes(type) && !appId) {
+          console.warn("[PUNN][QUEST_SCHEMA] Missing application metadata", {
+            questId: q.id,
+            name: q.config?.messages?.questName,
+            taskKey,
+            task: cfg.tasks?.[taskKey],
+            config: q.config,
+          });
+          UI.log(`Missing applicationId: ${q.config?.messages?.questName || q.id} [${taskKey}] ? expand [PUNN][QUEST_SCHEMA]`, "err");
+          UI.setTask(q.id, { name: q.config?.messages?.questName || q.id, type, cur: prog, max: target, status: "warn" });
+          continue;
+        }
 
-        const t = { id: q.id, appId: q.config.application.id, name: q.config.messages.questName, target, type, taskKey };
+        const t = { id: q.id, appId, name: q.config?.messages?.questName || q.id, target, type, taskKey };
 
         if (UI.tasks.has(q.id) && ["run", "done"].includes(UI.tasks.get(q.id).status)) continue;
 
@@ -1040,7 +1216,7 @@
       }
 
       if (videos.length + games.length > 0) {
-        UI.log(`📦 Queueing ${videos.length} videos + ${games.length} virtual clients`, "info");
+        UI.log(`📦 Queueing ${videos.length} videos + ${games.length} virtual clients (up to ${CONFIG.GAME_CONCURRENCY} concurrent)`, "info");
         await Promise.all([
           runPool(games, CONFIG.GAME_CONCURRENCY),
           runPool(videos, 3),
