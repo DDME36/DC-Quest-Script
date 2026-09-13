@@ -410,13 +410,16 @@
           border: 1px solid var(--zentyr-card-border);
           color: var(--zentyr-text-primary);
           box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-          cursor: pointer;
+          cursor: grab;
+          user-select: none;
           font-family: inherit;
-          transition: all 0.2s ease;
+          transition: border-color 0.2s ease, background 0.2s ease;
         }
         #zentyr-compact:hover {
           border-color: rgba(167,139,250,0.4);
-          transform: translateY(-1px);
+        }
+        #zentyr-compact:active {
+          cursor: grabbing;
         }
         #zentyr-compact[hidden] {
           display: none !important;
@@ -983,7 +986,7 @@
       const compactBtn = document.getElementById("zentyr-compact");
       let drag = false, sx, sy, ix, iy, dragMoved = false;
 
-      const startDrag = (e) => {
+      const startHeadDrag = (e) => {
         if (e.target.closest("button, a, input, [role='button']")) return;
         drag = true;
         dragMoved = false;
@@ -996,13 +999,26 @@
         e.preventDefault();
       };
 
-      if (head) head.addEventListener("mousedown", startDrag);
+      const startCompactDrag = (e) => {
+        if (e.button !== 0) return;
+        drag = true;
+        dragMoved = false;
+        sx = e.clientX;
+        sy = e.clientY;
+        const r = this.el.getBoundingClientRect();
+        ix = r.left;
+        iy = r.top;
+        this.el.style.right = "auto";
+      };
+
+      if (head) head.addEventListener("mousedown", startHeadDrag);
+      if (compactBtn) compactBtn.addEventListener("mousedown", startCompactDrag);
 
       const onMouseMove = (e) => {
         if (!drag) return;
         const dx = e.clientX - sx;
         const dy = e.clientY - sy;
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved = true;
         const rect = this.el.getBoundingClientRect();
         const nx = Math.max(0, Math.min(window.innerWidth - rect.width, ix + dx));
         const ny = Math.max(0, Math.min(window.innerHeight - rect.height, iy + dy));
@@ -1025,7 +1041,13 @@
 
       document.getElementById("zentyr-min")?.addEventListener("click", () => this.toggleCollapse());
       document.getElementById("zentyr-compact")?.addEventListener("click", (e) => {
-        if (!dragMoved) this.toggleCollapse(false);
+        if (dragMoved) {
+          e.preventDefault();
+          e.stopPropagation();
+          dragMoved = false;
+          return;
+        }
+        this.toggleCollapse(false);
       });
       document.getElementById("zentyr-stop")?.addEventListener("click", () => this.requestShutdown());
       document.getElementById("zentyr-activity-toggle")?.addEventListener("click", () => this.toggleActivity());
