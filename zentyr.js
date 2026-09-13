@@ -1,10 +1,10 @@
 /**
  *
- *  ZENTYR Quest Engine v3.6 (Dual Engine Edition 2026)
+ *  ZENTYR Quest Engine v3.6 (Tri-Engine Edition 2026)
  *  Discord Quest Auto-Completer & Activity Spoofer
  *
  *  Features:
- *  - Dual Engine: Safe Mode (1 by 1, human-like) & Turbo Mode (all concurrent, max speed)
+ *  - Tri-Engine: Safe (1 by 1), Balanced (2-3 tasks, optimal), Turbo (all concurrent)
  *  - Interactive Mode Switcher in Glassmorphism Floating UI
  *  - Dynamic Discord Client Theme Matcher (Light, Dark, Midnight, Darker)
  *  - Robust Heuristic Webpack Scraper (Resilient to Discord minified name updates)
@@ -15,33 +15,46 @@
 (async () => {
   "use strict";
 
-  // ─── 1. DUAL ENGINE MODES & SYSTEM CONFIG ───
+  // ─── 1. TRI-ENGINE MODES & SYSTEM CONFIG ───
   const MODES = {
     SAFE: {
       key: "SAFE",
       label: "SAFE",
       nameTh: "โหมดปลอดภัย",
-      badgeClass: "zentyr-mode-safe",
+      badgeClass: "mode-safe",
       gameConcurrency: 1,
       videoConcurrency: 1,
       videoSpeed: 2.5,
       videoMaxFuture: 5,
       requestDelay: 3200,
       heartbeatStagger: 6500,
-      desc: "ทำทีละ 1 เควสต์ · ความเร็วสมจริง · ความปลอดภัยสูงสุด"
+      desc: "ทำทีละ 1 เควสต์ · ความเร็วสมจริง · เซฟบัญชีสูงสุด"
+    },
+    BALANCED: {
+      key: "BALANCED",
+      label: "BALANCED",
+      nameTh: "โหมดสมดุล",
+      badgeClass: "mode-balanced",
+      gameConcurrency: 2,
+      videoConcurrency: 2,
+      videoSpeed: 5.0,
+      videoMaxFuture: 8,
+      requestDelay: 2200,
+      heartbeatStagger: 4500,
+      desc: "ทำ 2 เควสต์พร้อมกัน · ความเร็วเหมาะสม · แนะนำทั่วไป"
     },
     TURBO: {
       key: "TURBO",
       label: "TURBO",
-      nameTh: "โหมดเต็มที่",
-      badgeClass: "zentyr-mode-turbo",
+      nameTh: "โหมดเต็มพิกัด",
+      badgeClass: "mode-turbo",
       gameConcurrency: 99,
       videoConcurrency: 5,
-      videoSpeed: 8,
+      videoSpeed: 8.0,
       videoMaxFuture: 12,
       requestDelay: 1200,
       heartbeatStagger: 2000,
-      desc: "ทำพร้อมกันทุกเควสต์ · เร่งความเร็วเต็มสปีด · จบไวที่สุด"
+      desc: "ทำทุกเควสต์พร้อมกัน · เร่งความเร็วสูงสุด · จบไวทันใจ"
     }
   };
 
@@ -52,13 +65,13 @@
     MAX_TASK_TIME: 25 * 60 * 1000,
     MAX_RETRIES: 3,
     MAX_RATE_LIMIT_RETRIES: 8,
-    GAME_CONCURRENCY: 1,
-    VIDEO_CONCURRENCY: 1,
-    REQUEST_DELAY: 3200,
+    GAME_CONCURRENCY: 2,
+    VIDEO_CONCURRENCY: 2,
+    REQUEST_DELAY: 2200,
     REMOVE_DELAY: 3500,
-    HEARTBEAT_STAGGER: 6500,
-    VIDEO_SPEED: 2.5,
-    VIDEO_MAX_FUTURE: 5,
+    HEARTBEAT_STAGGER: 4500,
+    VIDEO_SPEED: 5.0,
+    VIDEO_MAX_FUTURE: 8,
     
     // UI Theme Palette
     THEMES: {
@@ -113,8 +126,9 @@
 
   // ─── 2. STUNNING SVG ICONS ───
   const I = {
-    SHIELD: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
-    BOLT: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>`,
+    SHIELD: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+    SLIDERS: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>`,
+    BOLT: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
     PLAY: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`,
     GAME: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01M15 10h.01M15 14h.01M6 12h4M8 10v4"/></svg>`,
     STREAM: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
@@ -132,12 +146,12 @@
     get(k) { try { const v = localStorage.getItem(`zentyr_${k}`); return v ? JSON.parse(v) : null; } catch { return null; } },
   };
 
-  // ─── 4. DUAL ENGINE STATE CONTROLLER ───
+  // ─── 4. TRI-ENGINE STATE CONTROLLER ───
   let currentModeKey = Store.get("mode");
-  if (!MODES[currentModeKey]) currentModeKey = "SAFE";
+  if (!MODES[currentModeKey]) currentModeKey = "BALANCED";
 
   function applyMode(modeKey) {
-    if (!MODES[modeKey]) modeKey = "SAFE";
+    if (!MODES[modeKey]) modeKey = "BALANCED";
     currentModeKey = modeKey;
     Store.set("mode", modeKey);
     const m = MODES[modeKey];
@@ -243,33 +257,38 @@
         .zentyr-env-web { background:rgba(251,191,36,0.12); color:var(--zentyr-warn); }
 
         .zentyr-ctrl { display:flex; gap:8px; align-items:center; }
-        .zentyr-mode-btn {
-          cursor:pointer; display:flex; align-items:center; gap:5px;
-          padding:3px 9px; border-radius:10px; font-weight:800; font-size:9.5px;
-          letter-spacing:0.8px; border:1px solid transparent;
-          transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          user-select:none; outline:none; background:transparent;
+        #zentyr-mode-bar {
+          padding:8px 12px; background:rgba(0,0,0,0.2);
+          border-bottom:1px solid var(--zentyr-card-border);
+          display:flex; gap:6px; transition:max-height 0.3s ease, padding 0.3s ease;
         }
-        .zentyr-mode-safe {
-          color:#34d399; background:rgba(52,211,153,0.1);
-          border-color:rgba(52,211,153,0.3);
-          box-shadow:0 0 10px rgba(52,211,153,0.12);
+        #zentyr-mode-bar.collapsed { max-height:0; padding:0 12px; overflow:hidden; border-bottom:none; }
+
+        .zentyr-seg-btn {
+          flex:1; display:flex; align-items:center; justify-content:center; gap:5px;
+          padding:6px 4px; border-radius:9px; font-size:9.5px; font-weight:700;
+          letter-spacing:0.7px; text-transform:uppercase; font-family:'JetBrains Mono',monospace;
+          color:var(--zentyr-text-secondary); background:rgba(255,255,255,0.03);
+          border:1px solid rgba(255,255,255,0.05); cursor:pointer;
+          transition:all 0.22s cubic-bezier(0.4, 0, 0.2, 1); user-select:none; outline:none;
         }
-        .zentyr-mode-safe:hover {
-          background:rgba(52,211,153,0.2);
-          box-shadow:0 0 14px rgba(52,211,153,0.25);
+        .zentyr-seg-btn:hover {
+          background:rgba(255,255,255,0.08); color:var(--zentyr-text-primary);
+          border-color:rgba(255,255,255,0.12);
         }
-        .zentyr-mode-turbo {
+        .zentyr-seg-btn.active.mode-safe {
+          color:#34d399; background:rgba(52,211,153,0.12);
+          border-color:rgba(52,211,153,0.35); box-shadow:0 0 12px rgba(52,211,153,0.2);
+        }
+        .zentyr-seg-btn.active.mode-balanced {
+          color:#38bdf8; background:rgba(56,189,248,0.12);
+          border-color:rgba(56,189,248,0.35); box-shadow:0 0 12px rgba(56,189,248,0.2);
+        }
+        .zentyr-seg-btn.active.mode-turbo {
           color:#f472b6; background:rgba(244,114,182,0.12);
-          border-color:rgba(244,114,182,0.35);
-          box-shadow:0 0 12px rgba(244,114,182,0.25);
-          animation:pPulse 2s ease infinite;
+          border-color:rgba(244,114,182,0.35); box-shadow:0 0 12px rgba(244,114,182,0.2);
         }
-        .zentyr-mode-turbo:hover {
-          background:rgba(244,114,182,0.22);
-          box-shadow:0 0 16px rgba(244,114,182,0.45);
-        }
-        .zentyr-mode-icon { display:flex; align-items:center; }
+        .zentyr-seg-icon { display:flex; align-items:center; }
         .zentyr-btn {
           cursor:pointer; opacity:0.6; transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1); display:flex;
           align-items:center; justify-content:center; border-radius:9px;
@@ -417,8 +436,8 @@
       this.el = document.createElement("div");
       this.el.id = "zentyr-root";
       const envTag = isApp
-        ? `<span class="zentyr-env zentyr-env-app">⚡ app</span>`
-        : `<span class="zentyr-env zentyr-env-web">🌐 web</span>`;
+        ? `<span class="zentyr-env zentyr-env-app">APP</span>`
+        : `<span class="zentyr-env zentyr-env-web">WEB</span>`;
 
       this.el.innerHTML = `
         <div id="zentyr-head">
@@ -428,20 +447,30 @@
             </div>
             <div class="zentyr-title-wrap">
               <div class="zentyr-title">${CONFIG.NAME}</div>
-              <div class="zentyr-sub">${CONFIG.VERSION} · Dual Engine</div>
+              <div class="zentyr-sub">${CONFIG.VERSION} · Tri-Engine</div>
             </div>
             ${envTag}
           </div>
           <div class="zentyr-ctrl">
-            <button class="zentyr-mode-btn ${MODES[currentModeKey].badgeClass}" id="zentyr-mode-toggle" title="Click to toggle Safe / Turbo mode">
-              <span class="zentyr-mode-icon">${currentModeKey === "SAFE" ? I.SHIELD : I.BOLT}</span>
-              <span class="zentyr-mode-text">${MODES[currentModeKey].label}</span>
-            </button>
             <div class="zentyr-btn zentyr-btn-stop" id="zentyr-stop">${I.STOP} STOP</div>
             <div class="zentyr-btn" id="zentyr-min" title="Minimize">${I.MINIMIZE}</div>
           </div>
         </div>
-        <div id="zentyr-body"><div class="zentyr-empty">◈ Booting Engine...</div></div>
+        <div id="zentyr-mode-bar">
+          <button class="zentyr-seg-btn ${currentModeKey === 'SAFE' ? 'active mode-safe' : ''}" data-mode="SAFE">
+            <span class="zentyr-seg-icon">${I.SHIELD}</span>
+            <span>Safe</span>
+          </button>
+          <button class="zentyr-seg-btn ${currentModeKey === 'BALANCED' ? 'active mode-balanced' : ''}" data-mode="BALANCED">
+            <span class="zentyr-seg-icon">${I.SLIDERS}</span>
+            <span>Balanced</span>
+          </button>
+          <button class="zentyr-seg-btn ${currentModeKey === 'TURBO' ? 'active mode-turbo' : ''}" data-mode="TURBO">
+            <span class="zentyr-seg-icon">${I.BOLT}</span>
+            <span>Turbo</span>
+          </button>
+        </div>
+        <div id="zentyr-body"><div class="zentyr-empty">Booting Engine...</div></div>
         <div id="zentyr-log"></div>
         <div id="zentyr-foot">ZENTYR TECHNOLOGY · EST 2026</div>
       `;
@@ -476,19 +505,19 @@
       document.getElementById("zentyr-min").onclick = () => this.toggleCollapse();
       document.getElementById("zentyr-stop").onclick = () => this.shutdown();
 
-      const modeBtn = document.getElementById("zentyr-mode-toggle");
-      if (modeBtn) {
-        modeBtn.onclick = () => {
-          const nextKey = currentModeKey === "SAFE" ? "TURBO" : "SAFE";
-          applyMode(nextKey);
-          modeBtn.className = `zentyr-mode-btn ${MODES[nextKey].badgeClass}`;
-          modeBtn.innerHTML = `
-            <span class="zentyr-mode-icon">${nextKey === "SAFE" ? I.SHIELD : I.BOLT}</span>
-            <span class="zentyr-mode-text">${MODES[nextKey].label}</span>
-          `;
-          UI.log(`🔄 สลับสู่ [${MODES[nextKey].label}] ${MODES[nextKey].nameTh} (${MODES[nextKey].desc})`, nextKey === "TURBO" ? "warn" : "ok");
+      const modeButtons = document.querySelectorAll(".zentyr-seg-btn");
+      modeButtons.forEach((btn) => {
+        btn.onclick = () => {
+          const targetMode = btn.getAttribute("data-mode");
+          if (!MODES[targetMode] || targetMode === currentModeKey) return;
+          applyMode(targetMode);
+          modeButtons.forEach((b) => {
+            b.classList.remove("active", "mode-safe", "mode-balanced", "mode-turbo");
+          });
+          btn.classList.add("active", MODES[targetMode].badgeClass);
+          UI.log(`[MODE] Switched to ${MODES[targetMode].label} (${MODES[targetMode].nameTh}): ${MODES[targetMode].desc}`, targetMode === "TURBO" ? "warn" : "ok");
         };
-      }
+      });
       
       const onKeyDown = (e) => {
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
@@ -532,6 +561,7 @@
 
     toggleCollapse() {
       this.collapsed = !this.collapsed;
+      document.getElementById("zentyr-mode-bar")?.classList.toggle("collapsed", this.collapsed);
       document.getElementById("zentyr-body")?.classList.toggle("collapsed", this.collapsed);
       document.getElementById("zentyr-log")?.classList.toggle("collapsed", this.collapsed);
     },
@@ -591,7 +621,7 @@
       const body = document.getElementById("zentyr-body");
       if (!body) return;
       if (!this.tasks.size) {
-        body.innerHTML = `<div class="zentyr-empty">◈ Waiting for quests...</div>`;
+        body.innerHTML = `<div class="zentyr-empty">Waiting for quests...</div>`;
         return;
       }
 
@@ -612,11 +642,11 @@
         let icon = I.BOLT, badge = "", sc = "";
 
         if (t.status === "done") {
-          icon = I.CHECK; badge = `<span class="p-badge p-b-done">✓ done</span>`; sc = "s-done";
+          icon = I.CHECK; badge = `<span class="p-badge p-b-done">DONE</span>`; sc = "s-done";
         } else if (t.status === "claiming") {
           icon = I.CLOCK; badge = `<span class="p-badge p-b-warn">claiming...</span>`; sc = "s-claiming";
         } else if (t.status === "claimed" || t.status === "claimed_no_code") {
-          icon = I.CHECK; badge = `<span class="p-badge p-b-done">✓ claimed</span>`; sc = "s-done";
+          icon = I.CHECK; badge = `<span class="p-badge p-b-done">CLAIMED</span>`; sc = "s-done";
         } else if (t.status === "captcha") {
           icon = I.WARN; badge = `<span class="p-badge p-b-warn">captcha</span>`; sc = "s-warn";
         } else if (t.status === "claim_failed") {
@@ -668,20 +698,20 @@
         } else if (t.status === "claimed_no_code") {
           contentHtml += `
             <div style="margin-top:8px; font-size:11px; color:var(--zentyr-ok); font-weight:600; animation: pIn 0.3s ease-out; display:flex; align-items:center; gap:6px;">
-              <span>🎁 เคลมสิทธิ์แล้ว! ตรวจสอบในหน้าคลังของขวัญ (Gift Inventory) บน Discord</span>
+              <span>สิทธิ์ถูกบันทึกแล้ว ตรวจสอบและรับโค้ดได้ใน Gift Inventory บน Discord</span>
             </div>
           `;
         } else if (t.status === "captcha") {
           contentHtml += `
             <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px; width:100%; animation: pIn 0.3s ease-out;">
-              <span style="font-size:10.5px; color:var(--zentyr-warn); font-weight:700;">🔒 กรุณาติ๊กช่องด้านล่างเพื่อแก้แคปช่า:</span>
+              <span style="font-size:10.5px; color:var(--zentyr-warn); font-weight:700;">ระบบต้องการการยืนยันตัวตน (CAPTCHA) เพื่อดำเนินการต่อ:</span>
               <div id="zentyr-captcha-${safeId}" style="min-height:80px; display:flex; justify-content:center; background:rgba(0,0,0,0.15); border-radius:10px; padding:8px; border:1px dashed var(--zentyr-card-border);"></div>
             </div>
           `;
         } else if (t.status === "claim_failed") {
           contentHtml += `
             <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px; font-size:10px; color:var(--zentyr-err); animation: pIn 0.3s ease-out;">
-              <span>❌ ไม่สามารถรับรางวัลได้: ${escapeHtml(t.errMsg || "ข้อผิดพลาดที่ไม่รู้จัก")}</span>
+              <span>ไม่สามารถรับรางวัลได้: ${escapeHtml(t.errMsg || "ข้อผิดพลาดที่ไม่รู้จัก")}</span>
               <button style="align-self:flex-start; background:rgba(248,113,113,0.1); color:var(--zentyr-err); border:1px solid rgba(248,113,113,0.25); padding:4px 10px; border-radius:8px; cursor:pointer; font-size:9px; font-weight:700; transition: all 0.2s;" onclick="window.open('https://discord.com/blog/discord-quests-guide', '_blank', 'noopener,noreferrer')">เปิดหน้าต่างเควสเพื่อเคลมเอง</button>
             </div>
           `;
@@ -708,7 +738,7 @@
           throw new Error("Clipboard unavailable");
         }
         await navigator.clipboard.writeText(input.value);
-        button.textContent = "✓";
+        button.textContent = "COPIED";
         button.title = "Copied";
       } catch {
         button.textContent = "COPY";
@@ -753,11 +783,11 @@
             r.rateLimitRetries++;
             const retryAfter = Number(e.body?.retry_after);
             const wait = Math.min(60000, Math.max(1000, (Number.isFinite(retryAfter) ? retryAfter : 6) * 1000));
-            UI.log(`⏱ Rate limit — Waiting ${(wait/1000).toFixed(1)}s`, "warn");
+            UI.log(`[RATE-LIMIT] Cooldown active — Waiting ${(wait/1000).toFixed(1)}s`, "warn");
             this.q.unshift(r);
             await sleep(wait + 1000);
           } else if (r.retries < CONFIG.MAX_RETRIES) {
-            UI.log(`⚠ API Failed, retrying ${r.retries + 1}/${CONFIG.MAX_RETRIES}`, "dim");
+            UI.log(`[RETRY] API call failed, retrying ${r.retries + 1}/${CONFIG.MAX_RETRIES}`, "dim");
             r.retries++;
             this.q.unshift(r);
             await sleep(2200);
@@ -838,7 +868,7 @@
         ]),
       };
 
-      const status = Object.entries(Mods).map(([k, v]) => `${k}:${v ? "✓" : "✗"}`).join(" ");
+      const status = Object.entries(Mods).map(([k, v]) => `${k}:${v ? "OK" : "NO"}`).join(" ");
       UI.log(`Modules ${status}`, Mods.QuestStore && Mods.API ? "ok" : "err");
 
       if (!Mods.QuestStore || !Mods.API || !Mods.Dispatcher) throw "Core modules missing";
@@ -930,7 +960,7 @@
 
         if (next >= task.target) break;
         UI.setTask(quest.id, { name: task.name, type: "VIDEO", cur, max: task.target, status: "run" });
-        if (Date.now() - started > CONFIG.MAX_TASK_TIME) { UI.log(`⏰ Video timeout: ${task.name}`, "err"); break; }
+        if (Date.now() - started > CONFIG.MAX_TASK_TIME) { UI.log(`[TIMEOUT] Video limit exceeded: ${task.name}`, "err"); break; }
         await sleep(1000 + rnd(200, 800));
       }
 
@@ -953,7 +983,7 @@
     // ── GAME SPOOFING ──
     async doGame(quest, task, userStatus) {
       if (!isApp) {
-        UI.log(`⚠ ${task.name} — Desktop App Only`, "warn");
+        UI.log(`[DESKTOP-ONLY] Task requires desktop client: ${task.name}`, "warn");
         UI.setTask(quest.id, { name: task.name, type: "GAME", cur: 0, max: task.target, status: "warn" });
         return;
       }
@@ -963,7 +993,7 @@
     // ── STREAM SPOOFING ──
     async doStream(quest, task, userStatus) {
       if (!isApp) {
-        UI.log(`⚠ ${task.name} — Desktop App Only`, "warn");
+        UI.log(`[DESKTOP-ONLY] Task requires desktop client: ${task.name}`, "warn");
         UI.setTask(quest.id, { name: task.name, type: "STREAM", cur: 0, max: task.target, status: "warn" });
         return;
       }
@@ -1003,14 +1033,14 @@
       }
 
       UI.setTask(quest.id, { name: task.name, type, cur: 0, max: task.target, status: "run" });
-      UI.log(`🎮 Registered Virtual Activity: ${app.name} [PID:${pid}]`, "dim");
+      UI.log(`[VIRTUAL-PID] Process mapped: ${app.name} [PID:${pid}]`, "dim");
 
       return new Promise((resolve) => {
         let staleCount = 0;
         let lastProg = -1;
 
         const timer = setTimeout(() => {
-          UI.log(`⏰ Spoof timeout: ${task.name}`, "err");
+          UI.log(`[TIMEOUT] Process spoof timeout: ${task.name}`, "err");
           done(); resolve();
         }, CONFIG.MAX_TASK_TIME);
 
@@ -1061,7 +1091,7 @@
       
       if (!chan) {
         UI.setTask(quest.id, { name: task.name, type: "ACTIVITY", cur: 0, max: task.target, status: "warn" });
-        return UI.log(`❌ Join an active voice channel before running activity quest: ${task.name}`, "err");
+        return UI.log(`[VOICE-REQUIRED] Join an active voice channel to proceed: ${task.name}`, "err");
       }
 
       const sKey = `call:${chan}:${rnd(1000, 9999)}`;
@@ -1085,7 +1115,7 @@
           UI.log(`Activity heartbeat rejected (${status}): ${hint}`, "err");
           return;
         }
-        if (Date.now() - t0 > CONFIG.MAX_TASK_TIME) { UI.log(`⏰ Activity timeout`, "err"); break; }
+        if (Date.now() - t0 > CONFIG.MAX_TASK_TIME) { UI.log(`[TIMEOUT] Activity limit exceeded`, "err"); break; }
         await sleep(20000 + rnd(-2000, 4000));
       }
       if (CONFIG.RUNNING && cur >= task.target) this.complete(quest, task);
@@ -1093,7 +1123,7 @@
 
     complete(quest, task) {
       UI.setTask(quest.id, { name: task.name, type: task.type, cur: task.target, max: task.target, status: "done" });
-      UI.log(`✓ Quest Accomplished: ${task.name} (กรุณากดรับรางวัลด้วยตนเองใน Discord)`, "ok");
+      UI.log(`[COMPLETE] Quest completed: ${task.name} (กดรับรางวัลใน Gift Inventory)`, "ok");
       try { if (Notification.permission === "granted") new Notification(`ZENTYR: Quest Finished!`, { body: task.name }); } catch {}
     },
 
@@ -1196,9 +1226,9 @@
   async function main() {
     UI.init();
     window.__zentyrStatus = { state: "loading", version: CONFIG.VERSION };
-    UI.log(`${isApp ? "⚡ Discord App Client" : "🌐 Discord Web Client"} Hooked Successfully`, isApp ? "ok" : "warn");
-    UI.log(`⚙️ Engine Profile: [${MODES[currentModeKey].label}] ${MODES[currentModeKey].nameTh} (${MODES[currentModeKey].desc})`, currentModeKey === "TURBO" ? "warn" : "ok");
-    if (!isApp) UI.log("📌 Browser environment active — maintain tab focus to prevent throttling.", "warn");
+    UI.log(`${isApp ? "[CLIENT] Discord Desktop App" : "[CLIENT] Discord Web"} Hooked Successfully`, isApp ? "ok" : "warn");
+    UI.log(`[PROFILE] Engine Mode: ${MODES[currentModeKey].label} (${MODES[currentModeKey].nameTh}) — ${MODES[currentModeKey].desc}`, "ok");
+    if (!isApp) UI.log("[NOTE] Browser client detected — maintain tab focus to prevent throttling.", "warn");
 
     if (!loadModules()) {
       window.__zentyrStatus = { state: "error", version: CONFIG.VERSION, message: "Core modules missing" };
@@ -1217,12 +1247,12 @@
       // ── Auto Enroll Active Quests ──
       const toEnroll = quests.filter(q => !q.userStatus?.completedAt && new Date(q.config.expiresAt).getTime() > now && !q.userStatus?.enrolledAt);
       if (toEnroll.length) {
-        UI.log(`📝 Auto enrolling ${toEnroll.length} eligible quests...`, "warn");
+        UI.log(`[ENROLL] Registering ${toEnroll.length} eligible quests...`, "warn");
         for (const q of toEnroll) {
           if (!CONFIG.RUNNING) break;
           try { 
             await Traffic.send(`/quests/${q.id}/enroll`, { location: 1 }); 
-            UI.log(`  ✓ Registered: ${q.config.messages.questName}`, "ok"); 
+            UI.log(`  [ENROLLED] ${q.config.messages.questName}`, "ok"); 
           } catch {}
         }
         await sleep(2000);
@@ -1260,7 +1290,7 @@
         if (completedUnclaimed.length > 0) {
           await sleep(5000);
         } else {
-          UI.log("💤 All tasks clear. Monitoring for updates in 30s...", "dim");
+          UI.log("[STANDBY] All quests processed. Monitoring for updates in 30s...", "dim");
           await sleep(30000);
         }
         cycle++;
@@ -1334,7 +1364,7 @@
       if (videos.length + games.length > 0) {
         const gameLimit = currentModeKey === "TURBO" ? Math.max(games.length, 1) : CONFIG.GAME_CONCURRENCY;
         const videoLimit = currentModeKey === "TURBO" ? Math.max(videos.length, 1) : (CONFIG.VIDEO_CONCURRENCY || 1);
-        UI.log(`📦 [${MODES[currentModeKey].label}] Queueing ${videos.length} videos + ${games.length} games (Concurrency: G=${gameLimit}, V=${videoLimit})`, "info");
+        UI.log(`[QUEUE] Mode: ${MODES[currentModeKey].label} · Dispatching ${videos.length} videos + ${games.length} games (Concurrency: G=${gameLimit}, V=${videoLimit})`, "info");
         await Promise.all([
           runPool(games, gameLimit),
           runPool(videos, videoLimit),
