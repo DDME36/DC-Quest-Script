@@ -687,6 +687,7 @@
           position: relative;
           overflow: hidden;
           transition: all 0.2s ease;
+          flex-shrink: 0;
         }
         .zentyr-card:hover {
           border-color: rgba(167,139,250,0.3);
@@ -754,6 +755,8 @@
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          min-width: 0;
+          flex: 1;
         }
         .zentyr-card-badge {
           font-size: 8.5px;

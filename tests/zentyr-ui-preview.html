@@ -181,49 +181,38 @@
       document.getElementById("vp-container").appendChild(root);
     }
 
-    // Add Fixture Tasks
-    UI.setTask("quest_video_1", {
-      name: "Fortnite Chapter 5 Quest",
-      type: "VIDEO",
-      cur: 45,
-      max: 120,
-      status: "run"
+    // Add Fixture Tasks (18 quests like user's real environment)
+    const sampleNames = [
+      "AION 2", "Old School Runescape", "Star Trek Fleet Command Desktop",
+      "Marvel Rivals S10: verify school pass", "Where Winds Meet 2.0 Wuxia Next-Gen",
+      "Battlefield 6 Multiplayer", "RuneScape: Dragonwilds Mission",
+      "Fortnite Chapter 5 Quest", "Genshin Impact Adventure", "Discord Nitro Activity",
+      "Valorant Champions Pass", "Roblox Cross-Play Challenge",
+      "Honkai Star Rail Astral Express", "Call of Duty: Warzone Mobile",
+      "Destiny 2: Episode Echoes", "Warframe 1999 Update", "PUBG Battlegrounds", "Cyberpunk Phantom Liberty"
+    ];
+
+    sampleNames.forEach((name, i) => {
+      let status = "queue";
+      let cur = 0;
+      let max = 600;
+      if (i < 5) {
+        status = "run";
+        cur = (i + 1) * 60;
+      } else if (i === sampleNames.length - 1) {
+        status = "done";
+        cur = max;
+      }
+      UI.setTask("quest_" + i, {
+        name,
+        type: i % 2 === 0 ? "GAME" : "VIDEO",
+        cur,
+        max,
+        status
+      });
     });
 
-    UI.setTask("quest_game_1", {
-      name: "Genshin Impact Adventure",
-      type: "GAME",
-      cur: 0,
-      max: 900,
-      status: "queue"
-    });
-
-    UI.setTask("quest_act_1", {
-      name: "Discord Nitro Activity",
-      type: "ACTIVITY",
-      cur: 300,
-      max: 300,
-      status: "done"
-    });
-
-    UI.setTask("quest_claimed_1", {
-      name: "Valorant Champions Pass",
-      type: "GAME",
-      cur: 600,
-      max: 600,
-      status: "claimed",
-      code: "ZNTYR-7X9K-2026-VAL"
-    });
-
-    UI.setTask("quest_captcha_1", {
-      name: "Roblox Cross-Play Challenge",
-      type: "GAME",
-      cur: 0,
-      max: 300,
-      status: "captcha"
-    });
-
-    UI.setPhase("running", "2 quests are in progress.");
+    UI.setPhase("running", "18 quests are in progress.");
 
     // Sample activity log entries
     UI.log("Client connected via Electron Renderer", "ok");
