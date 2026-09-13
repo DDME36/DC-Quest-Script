@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZENTYR UI Preview Harness</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      background-color: #313338;
+      color: #dbdee1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px;
+      overflow-x: hidden;
+    }
+    body.theme-light {
+      background-color: #e3e5e8;
+      color: #2e3338;
+    }
+    .harness-toolbar {
+      width: 100%;
+      max-width: 960px;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 100;
+    }
+    body.theme-light .harness-toolbar {
+      background: rgba(255, 255, 255, 0.7);
+      border-color: rgba(0, 0, 0, 0.1);
+      color: #111;
+    }
+    .toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .toolbar-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #949ba4;
+      margin-right: 4px;
+    }
+    button.h-btn {
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.08);
+      color: #f2f3f5;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    body.theme-light button.h-btn {
+      border-color: rgba(0, 0, 0, 0.15);
+      background: rgba(0, 0, 0, 0.06);
+      color: #2e3338;
+    }
+    button.h-btn:hover {
+      background: rgba(88, 101, 242, 0.25);
+      border-color: #5865F2;
+      color: #ffffff;
+    }
+    button.h-btn.active {
+      background: #5865F2;
+      color: #ffffff;
+      border-color: #5865F2;
+    }
+    .viewport-container {
+      width: 100%;
+      max-width: 960px;
+      min-height: 600px;
+      border: 2px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      position: relative;
+      transition: max-width 0.3s ease;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 20px;
+    }
+    body.theme-light .viewport-container {
+      border-color: rgba(0, 0, 0, 0.15);
+    }
+    .viewport-container.narrow {
+      max-width: 360px;
+      border-color: #A78BFA;
+    }
+    .viewport-indicator {
+      position: absolute;
+      top: -12px;
+      left: 20px;
+      background: #5865F2;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .reduced-motion-emulated * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="harness-toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-title">Theme</span>
+      <button class="h-btn active" id="btn-theme-dark">Dark</button>
+      <button class="h-btn" id="btn-theme-light">Light</button>
+    </div>
+
+    <div class="toolbar-group">
+      <span class="toolbar-title">Viewport</span>
+      <button class="h-btn active" id="btn-vp-normal">Standard (Desktop)</button>
+      <button class="h-btn" id="btn-vp-narrow">Narrow (360px)</button>
+    </div>
+
+    <div class="toolbar-group">
+      <span class="toolbar-title">Motion</span>
+      <button class="h-btn" id="btn-motion-toggle">Reduced Motion: OFF</button>
+    </div>
+
+    <div class="toolbar-group">
+      <span class="toolbar-title">Phases</span>
+      <button class="h-btn" data-phase="connecting">Connecting</button>
+      <button class="h-btn" data-phase="loading">Loading</button>
+      <button class="h-btn" data-phase="scanning">Scanning</button>
+      <button class="h-btn active" data-phase="running">Running</button>
+      <button class="h-btn" data-phase="standby">Standby</button>
+      <button class="h-btn" data-phase="action">Action</button>
+      <button class="h-btn" data-phase="error">Error</button>
+    </div>
+  </div>
+
+  <div class="viewport-container" id="vp-container">
+    <div class="viewport-indicator" id="vp-indicator">Viewport: 960px</div>
+  </div>
+
+  <script>
+    window.__ZENTYR_TEST__ = true;
+  </script>
+  <script src="../zentyr.js"></script>
+  <script>
+    const { UI, MODES, deriveSummary, getPhaseView, getTaskView } = window.__zentyrTest;
+
+    // Initialize UI
+    UI.init();
+
+    // Position inside harness viewport preview
+    const root = document.getElementById("zentyr-root");
+    if (root) {
+      root.style.position = "relative";
+      root.style.top = "auto";
+      root.style.left = "auto";
+      root.style.right = "auto";
+      document.getElementById("vp-container").appendChild(root);
+    }
+
+    // Add Fixture Tasks
+    UI.setTask("quest_video_1", {
+      name: "Fortnite Chapter 5 Quest",
+      type: "VIDEO",
+      cur: 45,
+      max: 120,
+      status: "run"
+    });
+
+    UI.setTask("quest_game_1", {
+      name: "Genshin Impact Adventure",
+      type: "GAME",
+      cur: 0,
+      max: 900,
+      status: "queue"
+    });
+
+    UI.setTask("quest_act_1", {
+      name: "Discord Nitro Activity",
+      type: "ACTIVITY",
+      cur: 300,
+      max: 300,
+      status: "done"
+    });
+
+    UI.setTask("quest_claimed_1", {
+      name: "Valorant Champions Pass",
+      type: "GAME",
+      cur: 600,
+      max: 600,
+      status: "claimed",
+      code: "ZNTYR-7X9K-2026-VAL"
+    });
+
+    UI.setTask("quest_captcha_1", {
+      name: "Roblox Cross-Play Challenge",
+      type: "GAME",
+      cur: 0,
+      max: 300,
+      status: "captcha"
+    });
+
+    UI.setPhase("running", "2 quests are in progress.");
+
+    // Sample activity log entries
+    UI.log("Client connected via Electron Renderer", "ok");
+    UI.log("Profile active: BALANCED (Optimal speed & concurrency)", "info");
+    UI.log("Scanning completed. Found 5 eligible quests.", "ok");
+    UI.log("Rate-limit avoidance delay applied (2200ms)", "info");
+    UI.log("CAPTCHA challenge detected on quest Roblox Cross-Play", "warn");
+
+    // Controls wiring
+    const vpContainer = document.getElementById("vp-container");
+    const vpIndicator = document.getElementById("vp-indicator");
+
+    document.getElementById("btn-theme-dark").onclick = () => {
+      document.body.classList.remove("theme-light");
+      document.documentElement.classList.remove("theme-light");
+      document.getElementById("btn-theme-dark").classList.add("active");
+      document.getElementById("btn-theme-light").classList.remove("active");
+      UI.syncTheme();
+    };
+
+    document.getElementById("btn-theme-light").onclick = () => {
+      document.body.classList.add("theme-light");
+      document.documentElement.classList.add("theme-light");
+      document.getElementById("btn-theme-light").classList.add("active");
+      document.getElementById("btn-theme-dark").classList.remove("active");
+      UI.syncTheme();
+    };
+
+    document.getElementById("btn-vp-normal").onclick = () => {
+      vpContainer.classList.remove("narrow");
+      vpIndicator.textContent = "Viewport: 960px";
+      document.getElementById("btn-vp-normal").classList.add("active");
+      document.getElementById("btn-vp-narrow").classList.remove("active");
+    };
+
+    document.getElementById("btn-vp-narrow").onclick = () => {
+      vpContainer.classList.add("narrow");
+      vpIndicator.textContent = "Viewport: 360px";
+      document.getElementById("btn-vp-narrow").classList.add("active");
+      document.getElementById("btn-vp-normal").classList.remove("active");
+    };
+
+    let motionReduced = false;
+    document.getElementById("btn-motion-toggle").onclick = () => {
+      motionReduced = !motionReduced;
+      document.body.classList.toggle("reduced-motion-emulated", motionReduced);
+      const btn = document.getElementById("btn-motion-toggle");
+      btn.textContent = `Reduced Motion: ${motionReduced ? 'ON' : 'OFF'}`;
+      btn.classList.toggle("active", motionReduced);
+    };
+
+    document.querySelectorAll("[data-phase]").forEach((btn) => {
+      btn.onclick = () => {
+        document.querySelectorAll("[data-phase]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const ph = btn.getAttribute("data-phase");
+        const details = {
+          connecting: "Preparing the ZENTYR engine.",
+          loading: "Loading Discord modules.",
+          scanning: "Looking for available quests.",
+          running: "2 quests are in progress.",
+          standby: "Checking again in 30 seconds.",
+          action: "Join a voice channel to continue.",
+          error: "Discord modules are unavailable. Reload Discord and try again."
+        };
+        UI.setPhase(ph, details[ph] || "");
+      };
+    });
+  </script>
+</body>
+</html>

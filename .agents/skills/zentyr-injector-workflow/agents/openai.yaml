@@ -1,0 +1,4 @@
+interface:
+  display_name: "PUNN Injector Workflow"
+  short_description: "Build, deploy, and debug the C# injector and JS script"
+  default_prompt: "Use $punn-injector-workflow to guide changes, compilation, injection patching, and debugging of the Discord Quest Injector."

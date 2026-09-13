@@ -1,0 +1,14 @@
+# Windows OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.BIN/
+
+# Temporary and backup files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Logs
+*.log
