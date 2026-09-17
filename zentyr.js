@@ -237,7 +237,7 @@
       case 'queue':
         statusLabel = 'Queued';
         statusClass = 'is-queued';
-        eta = task.eta || 'In queue';
+        eta = 'In queue';
         break;
       case 'done':
       case 'claimed':
@@ -260,12 +260,12 @@
       case 'warn':
         statusLabel = 'Skipped';
         statusClass = 'is-warning';
-        eta = task.eta || 'Skipped';
+        eta = 'Skipped';
         break;
       default:
         statusLabel = 'Pending';
         statusClass = 'is-queued';
-        eta = task.eta || '';
+        eta = '';
     }
 
     return { statusLabel, statusClass, percent, eta };
@@ -1395,19 +1395,9 @@
     // ─── 6. INTERACTIVE TRAFFIC QUEUE (ANTI-RATE LIMIT) ───
   const Traffic = {
     q: [], busy: false, stopped: false,
-    async send(url, body, options = 0) {
+    async send(url, body, retries = 0) {
       if (!CONFIG.RUNNING || this.stopped) throw new Error("Engine stopped");
-      const retries = typeof options === "number" ? options : (options?.retries || 0);
-      const maxRateLimitRetries = typeof options === "object" && options?.maxRateLimitRetries !== undefined
-        ? options.maxRateLimitRetries
-        : CONFIG.MAX_RATE_LIMIT_RETRIES;
-      const maxWaitMs = typeof options === "object" && options?.maxWaitMs !== undefined
-        ? options.maxWaitMs
-        : 60000;
-      return new Promise((ok, fail) => { 
-        this.q.push({ url, body, ok, fail, retries, rateLimitRetries: 0, maxRateLimitRetries, maxWaitMs }); 
-        this.run(); 
-      });
+      return new Promise((ok, fail) => { this.q.push({ url, body, ok, fail, retries, rateLimitRetries: 0 }); this.run(); });
     },
     stop(reason = new Error("Traffic queue stopped")) {
       this.stopped = true;
@@ -1431,16 +1421,13 @@
           if ([400, 401, 403, 404].includes(status)) {
             UI.log(`API rejected request (${status}) — not retrying`, "err");
             r.fail(e);
-          } else if (status === 429 && r.rateLimitRetries < r.maxRateLimitRetries) {
+          } else if (status === 429 && r.rateLimitRetries < CONFIG.MAX_RATE_LIMIT_RETRIES) {
             r.rateLimitRetries++;
             const retryAfter = Number(e.body?.retry_after);
-            const wait = Math.min(r.maxWaitMs, Math.max(1000, (Number.isFinite(retryAfter) ? retryAfter : 6) * 1000));
+            const wait = Math.min(60000, Math.max(1000, (Number.isFinite(retryAfter) ? retryAfter : 6) * 1000));
             UI.log(`[RATE-LIMIT] Cooldown active — Waiting ${(wait/1000).toFixed(1)}s`, "warn");
             this.q.unshift(r);
             await sleep(wait + 1000);
-          } else if (status === 429) {
-            UI.log(`[RATE-LIMIT] Request limit reached (${r.url}) — passing control`, "warn");
-            r.fail(e);
           } else if (r.retries < CONFIG.MAX_RETRIES) {
             UI.log(`[RETRY] API call failed, retrying ${r.retries + 1}/${CONFIG.MAX_RETRIES}`, "dim");
             r.retries++;
@@ -1904,84 +1891,22 @@
       let quests = getQ();
       const now = Date.now();
 
-      // ── 1. Discover & pre-populate all eligible quests immediately on UI ──
-      for (const q of quests) {
-        if (new Date(q.config?.expiresAt).getTime() <= now) continue;
-
-        const cfg = q.config?.taskConfig ?? q.config?.taskConfigV2;
-        if (!cfg?.tasks) continue;
-        const keys = Object.keys(cfg.tasks);
-        const taskKey = selectTaskKey(keys) || keys[0];
-        const target = cfg && taskKey ? cfg.tasks[taskKey].target : 1;
-        const type = getTaskType(taskKey);
-        const questName = q.config?.messages?.questName || q.id;
-
-        const isCompleted = Boolean(q.userStatus?.completedAt);
-        const isClaimed = Boolean(q.userStatus?.claimedAt);
-        const isEnrolled = Boolean(q.userStatus?.enrolledAt);
-        const prog = q.userStatus?.progress?.[taskKey]?.value ?? q.userStatus?.streamProgressSeconds ?? 0;
-
-        const existing = UI.tasks.get(q.id);
-        if (existing && ["run", "done", "claimed", "claimed_no_code"].includes(existing.status)) continue;
-
-        if (isCompleted) {
-          if (!isClaimed) {
-            UI.setTask(q.id, { name: questName, type, cur: target, max: target, status: "done" });
-          }
-        } else if (isEnrolled) {
-          if (!existing || existing.status === "warn") {
-            UI.setTask(q.id, { name: questName, type, cur: prog, max: target, status: "queue", eta: "In queue" });
-          }
-        } else {
-          // Unenrolled quest: display on UI right away!
-          if (!existing) {
-            UI.setTask(q.id, { name: questName, type, cur: prog, max: target, status: "queue", eta: "Pending accept" });
-          }
-        }
-      }
-
-      // ── 2. Auto Enroll Active Quests ──
+      // ── Auto Enroll Active Quests ──
       const toEnroll = quests.filter(q => !q.userStatus?.completedAt && new Date(q.config.expiresAt).getTime() > now && !q.userStatus?.enrolledAt);
       if (toEnroll.length) {
         UI.log(`[ENROLL] Registering ${toEnroll.length} eligible quests...`, "warn");
         for (const q of toEnroll) {
           if (!CONFIG.RUNNING) break;
-          const questName = q.config?.messages?.questName || q.id;
           try { 
-            // Location 11 is the Discover Quests tab in modern Discord desktop
-            await Traffic.send(
-              `/quests/${q.id}/enroll`,
-              { location: 11, is_targeted: false, metadata_raw: null },
-              { maxRateLimitRetries: 0 }
-            ); 
-            UI.log(`  [ENROLLED] ${questName}`, "ok");
-            const existing = UI.tasks.get(q.id);
-            if (existing) {
-              existing.status = "queue";
-              existing.eta = "In queue";
-              UI.setTask(q.id, existing);
-            }
-          } catch (err) {
-            const status = Number(err?.status);
-            if (status === 429) {
-              UI.log(`  [RATE-LIMITED] Auto-enroll restricted for "${questName}" — Click "Accept Quest" in Discord Quests tab`, "warn");
-              const existing = UI.tasks.get(q.id);
-              if (existing) {
-                existing.status = "warn";
-                existing.eta = "Click Accept in Discord";
-                UI.setTask(q.id, existing);
-              }
-            } else {
-              UI.log(`  [ENROLL-FAILED] Could not auto-enroll "${questName}" (${err?.message || status || 'error'})`, "dim");
-            }
-          }
-          await sleep(1500);
+            await Traffic.send(`/quests/${q.id}/enroll`, { location: 1 }); 
+            UI.log(`  [ENROLLED] ${q.config.messages.questName}`, "ok"); 
+          } catch {}
         }
-        await sleep(1000);
+        await sleep(2000);
         quests = getQ();
       }
 
-      // ── 3. Show Completed but Unclaimed Quests in UI ──
+      // ── Show Completed but Unclaimed Quests in UI ──
       const completedUnclaimed = quests.filter(q =>
         q.userStatus?.completedAt &&
         !q.userStatus?.claimedAt &&
@@ -2001,7 +1926,7 @@
         }
       }
 
-      // ── 4. Filter remaining active quests ──
+      // ── Filter remaining active quests ──
       const active = quests.filter(q =>
         !q.userStatus?.completedAt &&
         q.userStatus?.enrolledAt &&
@@ -2013,14 +1938,8 @@
           await sleep(5000);
         } else {
           UI.setPhase('standby', 'Checking again in 30 seconds.');
-          const hasUnenrolled = quests.some(q => !q.userStatus?.completedAt && !q.userStatus?.enrolledAt && new Date(q.config?.expiresAt).getTime() > now);
-          if (hasUnenrolled) {
-            UI.log("[STANDBY] Waiting for quests to be accepted (Click 'Accept Quest' in Discord). Checking in 10s...", "warn");
-            await sleep(10000);
-          } else {
-            UI.log("[STANDBY] All quests processed. Monitoring for updates in 30s...", "dim");
-            await sleep(30000);
-          }
+          UI.log("[STANDBY] All quests processed. Monitoring for updates in 30s...", "dim");
+          await sleep(30000);
         }
         cycle++;
         continue;
