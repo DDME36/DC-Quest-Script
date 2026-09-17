@@ -167,3 +167,17 @@ test('phase wiring contracts exist in engine lifecycle', () => {
   assert.match(source, /UI\.setPhase\(\s*['"]error['"]\s*,\s*['"]Discord modules are unavailable\. Reload Discord and try again\.['"]\s*\)/);
 });
 
+test('auto-enroll uses modern payload and supports informative task etas', () => {
+  const { getTaskView } = createZentyrContext();
+  const source = fs.readFileSync(path.join(__dirname, '..', 'zentyr.js'), 'utf-8');
+
+  // Custom eta handling
+  assert.equal(getTaskView({ status: 'queue', eta: 'Pending accept' }).eta, 'Pending accept');
+  assert.equal(getTaskView({ status: 'warn', eta: 'Click Accept in Discord' }).eta, 'Click Accept in Discord');
+
+  // Modern Discord Quests tab location 11 & non-blocking rate limit retries
+  assert.match(source, /location:\s*11/);
+  assert.match(source, /maxRateLimitRetries:\s*0/);
+});
+
+
