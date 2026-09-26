@@ -339,6 +339,19 @@
     CONFIG.VIDEO_MAX_FUTURE = m.videoMaxFuture;
     CONFIG.REQUEST_DELAY = m.requestDelay;
     CONFIG.HEARTBEAT_STAGGER = m.heartbeatStagger;
+    ModeEvents.notify();
+  }
+
+  // Wakes running pools so a mode switch changes concurrency immediately, not at the next cycle.
+  const ModeEvents = {
+    waiters: new Set(),
+    wait() { return new Promise((resolve) => this.waiters.add(resolve)); },
+    notify() { this.waiters.forEach((resolve) => resolve()); this.waiters.clear(); },
+  };
+
+  function poolLimit(kind, taskCount) {
+    if (currentModeKey === "TURBO") return Math.max(taskCount, 1);
+    return (kind === "VIDEO" ? CONFIG.VIDEO_CONCURRENCY : CONFIG.GAME_CONCURRENCY) || 1;
   }
   applyMode(currentModeKey);
 
@@ -1857,7 +1870,8 @@
   };
 
   // ─── 10. POOL CONCURRENCY CONTROLLER ───
-  async function runPool(tasks, limit) {
+  // getLimit is re-read on every slot check, so switching mode mid-cycle takes effect right away.
+  async function runPool(tasks, getLimit) {
     const running = [];
     const remove = (promise) => {
       const index = running.indexOf(promise);
@@ -1873,7 +1887,7 @@
       running.push(p);
       if (index === tasks.length - 1) break;
       await sleep(CONFIG.HEARTBEAT_STAGGER + rnd(-1000, 1500));
-      if (running.length >= limit) await Promise.race(running);
+      while (CONFIG.RUNNING && running.length >= getLimit()) await Promise.race([...running, ModeEvents.wait()]);
     }
     await Promise.all(running);
   }
@@ -2131,12 +2145,10 @@
       if (videos.length + games.length > 0) {
         const activeCount = videos.length + games.length;
         UI.setPhase('running', `${activeCount} quest${activeCount === 1 ? ' is' : 's are'} in progress.`);
-        const gameLimit = currentModeKey === "TURBO" ? Math.max(games.length, 1) : CONFIG.GAME_CONCURRENCY;
-        const videoLimit = currentModeKey === "TURBO" ? Math.max(videos.length, 1) : (CONFIG.VIDEO_CONCURRENCY || 1);
-        UI.log(`[QUEUE] Mode: ${MODES[currentModeKey].label} · Dispatching ${videos.length} videos + ${games.length} games (Concurrency: G=${gameLimit}, V=${videoLimit})`, "info");
+        UI.log(`[QUEUE] Mode: ${MODES[currentModeKey].label} · Dispatching ${videos.length} videos + ${games.length} games (Concurrency: G=${poolLimit("GAME", games.length)}, V=${poolLimit("VIDEO", videos.length)})`, "info");
         await Promise.all([
-          runPool(games, gameLimit),
-          runPool(videos, videoLimit),
+          runPool(games, () => poolLimit("GAME", games.length)),
+          runPool(videos, () => poolLimit("VIDEO", videos.length)),
         ]);
         if (!CONFIG.RUNNING) break;
         UI.log(`Cycle ${cycle} complete - refreshing state...`, "ok");
@@ -2158,6 +2170,7 @@
       MODES, CONFIG, UI, deriveSummary, getPhaseView, getTaskView,
       Backoff, StreamPatcher, selectTaskKey, getTaskType, resolveApplicationId,
       isQuestLive, questName, isRejectedStatus,
+      runPool, applyMode, poolLimit,
     };
     return;
   }
@@ -2168,4 +2181,4 @@
     UI.shutdown();
   });
 })();
-//# zentyr-signature=HlKGu7XzUTHKJMY5fA1189komRR8uqDftoJDOg1Ofm4IffeWnpgexWbW5uJurWnknw+z1+NPSpM7lmmEPB0L1WaJMlCDYAsv2LsyxQEdSi+mVZYkFGiYAuF9XCEOhJqHJHETAG7eQpYjY8ZhKOunDNX0wbaXGdS9C3OY0G1qQmyF1XSnWX6x/hsLsZl5Z5XDt9paLLcvKB7FD1zEhCYhLO1015q3jM/mPNGAkUdGQ5eet64dSckDIbsVw50vTI3OOhAo+BhMDIgtCrZvvoh0WuzP7KoyoC3QGxpQ+m5TOtL4Sk7GLhVunwrBk5o8JJjTTlLytr2lgbTvK8VWzaUHnC3t5vL5rzyybzaifBqsduFHU2cCymO4Bx9Q0qvtc0B1RrRLEGlfRJl981hGXehWXhDOf6jLn63/GVoAtq3S/zBmSKhs/DwScl/lnfKfU1GTDRvyKmZV1/u/dCvqNEN8krk5yOxG3Nl2Fbji26YZgJX1Smg3zgFc/ohKuhiPQP0b
+//# zentyr-signature=Qnw9yvLN82u8+q3r/3wyZUoBrf8CBPCm0a779TflVuxp5b5sgWgVSopcIH0rtaE5PScex94KYhzQzHFsVv3zuA/02wd2/YNP4dy7i2lRguwEKRdUogCopIOAtG0Fz79xGCUbrMaUVIUP6anqPoGNk3vSMq+dRoanbMCdSbSgKFzDPe8PyuE2aCKEVCW3ydbS/DAbLC7kru5DjqxwTJt//+ftg2D3naxkgDu418QHn1XEmNhhXaHpmNZbmGyYuwL1lneIbfdXbbIHPzV79HKFpmkKdzr8Uf0AgXYgz0H20dVxf9SBC15+aip2lmz0Hp43QJBZlSDBjwNIrSpIqsszPNpor+EFVoY6uwo0YpWJV3QZU4vIKhv1cpg4xHBp5l1oVgpd/r7EpNRLyYVsHW/ew4VHf1JBb7XWVxQNI1V2aHtcosmDqeabQUjyAusx9o0ndzsLrzgT+VeD8xiDeSC238rxpdixVI0RnVHasKbtXtQlxlAoM4LopNayw6CYGHHi
