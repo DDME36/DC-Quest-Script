@@ -1,6 +1,6 @@
 /**
  *
- *  ZENTYR Quest Engine v3.6 (Tri-Engine Edition 2026)
+ *  ZENTYR Quest Engine v3.7 (Tri-Engine Edition 2026)
  *  Discord Quest Auto-Completer & Activity Spoofer
  *
  *  Features:
@@ -60,9 +60,13 @@
 
   const CONFIG = {
     NAME: "ZENTYR",
-    VERSION: "v3.6",
+    VERSION: "v3.7",
     RUNNING: true,
     MAX_TASK_TIME: 25 * 60 * 1000,
+    STALL_TIMEOUT: 5 * 60 * 1000,
+    MAX_TASK_FAILURES: 5,
+    BACKOFF_BASE: 30 * 1000,
+    BACKOFF_MAX: 10 * 60 * 1000,
     MAX_RETRIES: 3,
     MAX_RATE_LIMIT_RETRIES: 8,
     GAME_CONCURRENCY: 2,
@@ -122,6 +126,30 @@
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  };
+
+  // Quest objects come straight from Discord's store; any field may be missing.
+  const questName = (q) => q?.config?.messages?.questName || q?.id || "Unknown quest";
+  const isQuestLive = (q, now = Date.now()) => new Date(q?.config?.expiresAt).getTime() > now;
+  const httpStatus = (error) => Number(error?.status) || 0;
+  const isRejectedStatus = (status) => status >= 400 && status < 500 && status !== 429;
+
+  // Quests that end up "warn" are retried with exponential backoff instead of every cycle.
+  const Backoff = {
+    entries: new Map(),
+    fail(id, now = Date.now()) {
+      const attempts = (this.entries.get(id)?.attempts || 0) + 1;
+      const delay = Math.min(CONFIG.BACKOFF_MAX, CONFIG.BACKOFF_BASE * 2 ** (attempts - 1));
+      this.entries.set(id, { attempts, until: now + delay });
+      return delay;
+    },
+    blocked(id, now = Date.now()) { return (this.entries.get(id)?.until || 0) > now; },
+    clear(id) { this.entries.delete(id); },
+    nextRetryIn(now = Date.now()) {
+      let next = Infinity;
+      for (const { until } of this.entries.values()) if (until > now) next = Math.min(next, until - now);
+      return next;
+    },
   };
 
   function deriveSummary(tasks) {
@@ -937,7 +965,7 @@
         <header id="zentyr-head">
           <div class="zentyr-brand">
             <img class="zentyr-logo" src="${BRAND_LOGO}" alt="">
-            <span><strong>ZENTYR</strong><small>v3.6 · ${envTag}</small></span>
+            <span><strong>ZENTYR</strong><small>${CONFIG.VERSION} · ${envTag}</small></span>
           </div>
           <div class="zentyr-controls">
             <button id="zentyr-activity-toggle" aria-expanded="false" aria-controls="zentyr-activity">Activity</button>
@@ -1216,7 +1244,8 @@
         try { this.themeObserver.disconnect(); } catch {}
       }
       Patcher.clean();
-      setTimeout(() => { 
+      StreamPatcher.clean();
+      setTimeout(() => {
         this.el?.remove(); 
         document.getElementById("zentyr-style")?.remove(); 
         window.__zentyrLock = false; 
@@ -1417,8 +1446,8 @@
         try {
           r.ok(await Mods.API.post({ url: r.url, body: r.body }));
         } catch (e) {
-          const status = Number(e?.status);
-          if ([400, 401, 403, 404].includes(status)) {
+          const status = httpStatus(e);
+          if (isRejectedStatus(status)) {
             UI.log(`API rejected request (${status}) — not retrying`, "err");
             r.fail(e);
           } else if (status === 429 && r.rateLimitRetries < CONFIG.MAX_RATE_LIMIT_RETRIES) {
@@ -1452,7 +1481,9 @@
       const wp = webpackChunkdiscord_app.push([[Symbol()], {}, (r) => r]);
       webpackChunkdiscord_app.pop();
 
-      const find = (fn) => Object.values(wp.c).find((m) => { try { return fn(m?.exports); } catch { return false; } })?.exports;
+      // Collect module exports once; every lookup below scans this array instead of wp.c.
+      const allExports = Object.values(wp.c).map((m) => m?.exports).filter(Boolean);
+      const find = (fn) => allExports.find((e) => { try { return fn(e); } catch { return false; } });
       const pick = (fns) => { for (const f of fns) { try { const r = f(); if (r) return r; } catch {} } return null; };
 
       Mods = {
@@ -1513,11 +1544,12 @@
       const status = Object.entries(Mods).map(([k, v]) => `${k}:${v ? "OK" : "NO"}`).join(" ");
       UI.log(`Modules ${status}`, Mods.QuestStore && Mods.API ? "ok" : "err");
 
-      if (!Mods.QuestStore || !Mods.API || !Mods.Dispatcher) throw "Core modules missing";
+      if (!Mods.QuestStore || !Mods.API || !Mods.Dispatcher) throw new Error("Core modules missing");
       Patcher.init(Mods.RunStore);
+      StreamPatcher.store = Mods.StreamStore;
       return true;
     } catch (e) {
-      UI.log(`Module load failed: ${e}`, "err");
+      UI.log(`Module load failed: ${e?.message || e}`, "err");
       return false;
     }
   }
@@ -1557,6 +1589,29 @@
     clean() { this.games = []; this.unpatch(); },
   };
 
+  // Stream tasks share one patch of StreamStore; the original is saved once and restored when the last stream ends.
+  const StreamPatcher = {
+    store: null, streams: [], orig: null, on: false,
+    add(meta) {
+      this.streams.push(meta);
+      if (this.on || !this.store) return;
+      this.orig = this.store.getStreamerActiveStreamMetadata;
+      this.store.getStreamerActiveStreamMetadata = () => this.streams[this.streams.length - 1];
+      this.on = true;
+    },
+    remove(meta) {
+      this.streams = this.streams.filter((s) => s.pid !== meta.pid);
+      if (!this.streams.length) this.unpatch();
+    },
+    unpatch() {
+      if (!this.on) return;
+      this.store.getStreamerActiveStreamMetadata = this.orig;
+      this.orig = null;
+      this.on = false;
+    },
+    clean() { this.streams = []; this.unpatch(); },
+  };
+
   // ─── 9. QUESTER MODULE (TASK ENGINE) ───
   const Quester = {
     clean(n) { return String(n || "DiscordQuest").replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, " "); },
@@ -1583,6 +1638,7 @@
 
       const started = Date.now();
       let done = false;
+      let failures = 0;
 
       while (cur < task.target && CONFIG.RUNNING) {
         const maxOk = Math.floor((Date.now() - t0) / 1000) + CONFIG.VIDEO_MAX_FUTURE;
@@ -1594,10 +1650,20 @@
             const r = await Traffic.send(`/quests/${quest.id}/video-progress`, {
               timestamp: Math.min(task.target, next + (Math.random() * 3 - 1.5)),
             });
-            done = r.body.completed_at != null;
+            done = r?.body?.completed_at != null;
             cur = Math.min(task.target, next);
+            failures = 0;
             if (done) break;
-          } catch {}
+          } catch (error) {
+            if (!CONFIG.RUNNING) return;
+            const status = httpStatus(error);
+            // Traffic already retried transient errors; a 4xx or repeated failures mean this quest cannot progress.
+            if (isRejectedStatus(status) || ++failures >= CONFIG.MAX_TASK_FAILURES) {
+              UI.setTask(quest.id, { name: task.name, type: "VIDEO", cur, max: task.target, status: "warn" });
+              UI.log(`Video progress rejected (${status || error?.message || "error"}): ${task.name}`, "err");
+              return;
+            }
+          }
         }
 
         if (next >= task.target) break;
@@ -1666,59 +1732,71 @@
 
       let cleanup;
       if (type === "STREAM") {
-        const orig = Mods.StreamStore.getStreamerActiveStreamMetadata;
-        Mods.StreamStore.getStreamerActiveStreamMetadata = () => ({ id: app.id, pid, sourceName: app.name });
-        cleanup = () => { Mods.StreamStore.getStreamerActiveStreamMetadata = orig; };
+        const meta = { id: app.id, pid, sourceName: app.name };
+        StreamPatcher.add(meta);
+        cleanup = () => StreamPatcher.remove(meta);
       } else {
         Patcher.add(game);
         cleanup = () => Patcher.remove(game);
       }
 
-      UI.setTask(quest.id, { name: task.name, type, cur: 0, max: task.target, status: "run" });
+      const startProg = quest.config?.configVersion === 1
+        ? (userStatus?.streamProgressSeconds ?? 0)
+        : (userStatus?.progress?.[key]?.value ?? 0);
+      UI.setTask(quest.id, { name: task.name, type, cur: startProg, max: task.target, status: "run" });
       UI.log(`[VIRTUAL-PID] Process mapped: ${app.name} [PID:${pid}]`, "dim");
 
       return new Promise((resolve) => {
-        let staleCount = 0;
-        let lastProg = -1;
+        let lastProg = startProg;
+        let lastChange = Date.now();
+        let finished = false;
 
-        const timer = setTimeout(() => {
-          UI.log(`[TIMEOUT] Process spoof timeout: ${task.name}`, "err");
-          done(); resolve();
-        }, CONFIG.MAX_TASK_TIME);
+        const finish = (outcome, message) => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          clearInterval(watchdog);
+          cleanup();
+          Mods.Dispatcher.unsubscribe(EVT.HB, onHB);
+          _activeCleanups.delete(stop);
+          if (outcome === "done") {
+            this.complete(quest, task);
+          } else if (outcome === "warn" && CONFIG.RUNNING) {
+            UI.setTask(quest.id, { name: task.name, type, cur: lastProg, max: task.target, status: "warn" });
+            UI.log(message, "err");
+          }
+          resolve();
+        };
+        const stop = () => finish("stopped");
+
+        const timer = setTimeout(() => finish("warn", `[TIMEOUT] Process spoof timeout: ${task.name}`), CONFIG.MAX_TASK_TIME);
+
+        // Heartbeats that stop arriving (or stop advancing) would otherwise hold a pool slot until MAX_TASK_TIME.
+        const watchdog = setInterval(() => {
+          if (!CONFIG.RUNNING) return finish("stopped");
+          if (Date.now() - lastChange > CONFIG.STALL_TIMEOUT) {
+            finish("warn", `[STALLED] No progress for ${fmt(Math.round(CONFIG.STALL_TIMEOUT / 1000))}: ${task.name}`);
+          }
+        }, 15000);
 
         const onHB = (d) => {
-          if (!CONFIG.RUNNING) { done(); resolve(); return; }
-          if (d.questId !== quest.id) return;
+          if (!CONFIG.RUNNING) return finish("stopped");
+          if (d?.questId !== quest.id) return;
 
-          let prog = quest.config.configVersion === 1 
-            ? (d.userStatus.streamProgressSeconds ?? 0)
-            : (d.userStatus.progress?.[key]?.value ?? 0);
+          const prog = quest.config?.configVersion === 1
+            ? (d.userStatus?.streamProgressSeconds ?? 0)
+            : (d.userStatus?.progress?.[key]?.value ?? 0);
 
           if (prog !== lastProg) {
             lastProg = prog;
-            staleCount = 0;
-          } else {
-            staleCount++;
+            lastChange = Date.now();
           }
 
           UI.setTask(quest.id, { name: task.name, type, cur: prog, max: task.target, status: "run" });
-
-          if (prog >= task.target) {
-            done();
-            this.complete(quest, task);
-            resolve();
-          }
+          if (prog >= task.target) finish("done");
         };
 
-        let _resolved = false;
-        const done = () => {
-          if (_resolved) return; _resolved = true;
-          clearTimeout(timer); 
-          cleanup(); 
-          Mods.Dispatcher.unsubscribe(EVT.HB, onHB); 
-          _activeCleanups.delete(done);
-        };
-        _activeCleanups.add(done);
+        _activeCleanups.add(stop);
         Mods.Dispatcher.subscribe(EVT.HB, onHB);
       });
     },
@@ -1745,7 +1823,7 @@
       while (cur < task.target && CONFIG.RUNNING) {
         try {
           const r = await Traffic.send(`/quests/${quest.id}/heartbeat`, { stream_key: sKey, terminal: false });
-          cur = r.body.progress?.[task.taskKey]?.value ?? cur + 20;
+          cur = r?.body?.progress?.[task.taskKey]?.value ?? cur + 20;
           UI.setTask(quest.id, { name: task.name, type: "ACTIVITY", cur, max: task.target, status: "run" });
           if (cur >= task.target) {
             await Traffic.send(`/quests/${quest.id}/heartbeat`, { stream_key: sKey, terminal: true });
@@ -1758,7 +1836,11 @@
           UI.log(`Activity heartbeat rejected (${status}): ${hint}`, "err");
           return;
         }
-        if (Date.now() - t0 > CONFIG.MAX_TASK_TIME) { UI.log(`[TIMEOUT] Activity limit exceeded`, "err"); break; }
+        if (Date.now() - t0 > CONFIG.MAX_TASK_TIME) {
+          UI.setTask(quest.id, { name: task.name, type: "ACTIVITY", cur, max: task.target, status: "warn" });
+          UI.log(`[TIMEOUT] Activity limit exceeded: ${task.name}`, "err");
+          return;
+        }
         await sleep(20000 + rnd(-2000, 4000));
       }
       if (CONFIG.RUNNING && cur >= task.target) this.complete(quest, task);
@@ -1781,7 +1863,7 @@
       const index = running.indexOf(promise);
       if (index >= 0) running.splice(index, 1);
     };
-    for (const fn of tasks) {
+    for (const [index, fn] of tasks.entries()) {
       if (!CONFIG.RUNNING) break;
       let p;
       p = Promise.resolve()
@@ -1789,6 +1871,7 @@
         .catch((error) => UI.log(`Task failed: ${error?.message || error}`, "err"))
         .finally(() => remove(p));
       running.push(p);
+      if (index === tasks.length - 1) break;
       await sleep(CONFIG.HEARTBEAT_STAGGER + rnd(-1000, 1500));
       if (running.length >= limit) await Promise.race(running);
     }
@@ -1884,53 +1967,65 @@
     window.__zentyrStatus = { state: "ready", version: CONFIG.VERSION };
 
     let cycle = 1;
+    const getQ = () => {
+      const quests = Mods.QuestStore.quests;
+      if (!quests) return [];
+      return (quests instanceof Map ? [...quests.values()] : Object.values(quests)).filter(Boolean);
+    };
+
     while (CONFIG.RUNNING) {
       UI.log(`-- Processing Cycle ${cycle} --`, "info");
 
-      const getQ = () => Mods.QuestStore.quests instanceof Map ? [...Mods.QuestStore.quests.values()] : Object.values(Mods.QuestStore.quests);
       let quests = getQ();
-      const now = Date.now();
 
       // ── Auto Enroll Active Quests ──
-      const toEnroll = quests.filter(q => !q.userStatus?.completedAt && new Date(q.config.expiresAt).getTime() > now && !q.userStatus?.enrolledAt);
+      const toEnroll = quests.filter(q =>
+        !q.userStatus?.completedAt &&
+        !q.userStatus?.enrolledAt &&
+        isQuestLive(q) &&
+        !Backoff.blocked(`enroll:${q.id}`)
+      );
       if (toEnroll.length) {
         UI.log(`[ENROLL] Registering ${toEnroll.length} eligible quests...`, "warn");
         for (const q of toEnroll) {
           if (!CONFIG.RUNNING) break;
-          try { 
-            await Traffic.send(`/quests/${q.id}/enroll`, { location: 1 }); 
-            UI.log(`  [ENROLLED] ${q.config.messages.questName}`, "ok"); 
-          } catch {}
+          try {
+            await Traffic.send(`/quests/${q.id}/enroll`, { location: 1 });
+            Backoff.clear(`enroll:${q.id}`);
+            UI.log(`  [ENROLLED] ${questName(q)}`, "ok");
+          } catch (error) {
+            if (!CONFIG.RUNNING) break;
+            const delay = Backoff.fail(`enroll:${q.id}`);
+            UI.log(`  [ENROLL-FAILED] ${questName(q)} (${httpStatus(error) || error?.message || "error"}) — retry in ${fmt(Math.round(delay / 1000))}`, "dim");
+          }
         }
         await sleep(2000);
         quests = getQ();
       }
 
+      const now = Date.now();
+
       // ── Show Completed but Unclaimed Quests in UI ──
       const completedUnclaimed = quests.filter(q =>
         q.userStatus?.completedAt &&
         !q.userStatus?.claimedAt &&
-        new Date(q.config.expiresAt).getTime() > now
+        isQuestLive(q, now)
       );
 
       for (const q of completedUnclaimed) {
-        const cfg = q.config.taskConfig ?? q.config.taskConfigV2;
+        if (UI.tasks.has(q.id)) continue;
+        const cfg = q.config?.taskConfig ?? q.config?.taskConfigV2;
         const keys = cfg?.tasks ? Object.keys(cfg.tasks) : [];
         const taskKey = selectTaskKey(keys) || keys[0];
-        const target = cfg && taskKey ? cfg.tasks[taskKey].target : 1;
-        const type = getTaskType(taskKey);
-
-        const t = { id: q.id, appId: resolveApplicationId(q, cfg, taskKey), name: q.config.messages.questName, target, type, taskKey };
-        if (!UI.tasks.has(q.id)) {
-          UI.setTask(q.id, { name: t.name, type, cur: target, max: target, status: "done" });
-        }
+        const target = cfg?.tasks?.[taskKey]?.target ?? 1;
+        UI.setTask(q.id, { name: questName(q), type: getTaskType(taskKey), cur: target, max: target, status: "done" });
       }
 
       // ── Filter remaining active quests ──
       const active = quests.filter(q =>
         !q.userStatus?.completedAt &&
         q.userStatus?.enrolledAt &&
-        new Date(q.config.expiresAt).getTime() > now
+        isQuestLive(q, now)
       );
 
       if (!active.length) {
@@ -1948,29 +2043,36 @@
       const videos = [], games = [];
 
       for (const q of active) {
-        const cfg = q.config.taskConfig ?? q.config.taskConfigV2;
+        if (Backoff.blocked(q.id, now)) continue;
+        const existing = UI.tasks.get(q.id);
+        if (existing && ["run", "done"].includes(existing.status)) continue;
+
+        const name = questName(q);
+        const cfg = q.config?.taskConfig ?? q.config?.taskConfigV2;
         if (!cfg?.tasks) {
-          UI.log(`Quest configuration is unavailable: ${q.config?.messages?.questName || q.id}`, "warn");
+          UI.log(`Quest configuration is unavailable: ${name}`, "warn");
+          Backoff.fail(q.id);
           continue;
         }
         const keys = Object.keys(cfg.tasks);
         let taskKey = selectTaskKey(keys);
         if (!taskKey) {
           const fallbackKey = keys[0];
-          const fallbackAppId = resolveApplicationId(q, cfg, fallbackKey);
-          if (fallbackKey && fallbackAppId) {
+          if (fallbackKey && resolveApplicationId(q, cfg, fallbackKey)) {
             taskKey = fallbackKey;
-            UI.log(`Inferred GAME task key ${fallbackKey}: ${q.config?.messages?.questName || q.id}`, "warn");
+            UI.log(`Inferred GAME task key ${fallbackKey}: ${name}`, "warn");
           }
         }
         if (!taskKey) {
-          UI.log(`Unknown quest blueprint: ${q.config?.messages?.questName || q.id} [${keys.join(", ")}]`, "warn");
+          UI.log(`Unknown quest blueprint: ${name} [${keys.join(", ")}]`, "warn");
+          Backoff.fail(q.id);
           continue;
         }
 
         const target = cfg.tasks[taskKey]?.target;
         if (!Number.isFinite(target) || target <= 0) {
-          UI.log(`Invalid quest target: ${q.config?.messages?.questName || q.id} [${taskKey}]`, "warn");
+          UI.log(`Invalid quest target: ${name} [${taskKey}]`, "warn");
+          Backoff.fail(q.id);
           continue;
         }
         const prog = q.userStatus?.progress?.[taskKey]?.value ?? q.userStatus?.streamProgressSeconds ?? 0;
@@ -1981,28 +2083,45 @@
         if (["GAME", "STREAM"].includes(type) && !appId) {
           console.warn("[ZENTYR][QUEST_SCHEMA] Missing application metadata", {
             questId: q.id,
-            name: q.config?.messages?.questName,
+            name,
             taskKey,
             task: cfg.tasks?.[taskKey],
             config: q.config,
           });
-          UI.log(`Missing applicationId: ${q.config?.messages?.questName || q.id} [${taskKey}] ? expand [ZENTYR][QUEST_SCHEMA]`, "err");
-          UI.setTask(q.id, { name: q.config?.messages?.questName || q.id, type, cur: prog, max: target, status: "warn" });
+          UI.log(`Missing applicationId: ${name} [${taskKey}] ? expand [ZENTYR][QUEST_SCHEMA]`, "err");
+          UI.setTask(q.id, { name, type, cur: prog, max: target, status: "warn" });
+          Backoff.fail(q.id);
           continue;
         }
 
-        const t = { id: q.id, appId, name: q.config?.messages?.questName || q.id, target, type, taskKey };
+        const t = { id: q.id, appId, name, target, type, taskKey };
+        UI.setTask(q.id, { name, type, cur: prog, max: target, status: "queue" });
 
-        if (UI.tasks.has(q.id) && ["run", "done"].includes(UI.tasks.get(q.id).status)) continue;
-
-        UI.setTask(q.id, { name: t.name, type, cur: prog, max: target, status: "queue" });
-
-        const runner = () => {
+        const run = () => {
           switch (type) {
             case "VIDEO": return Quester.doVideo(q, t, q.userStatus);
             case "GAME": return Quester.doGame(q, t, q.userStatus);
             case "STREAM": return Quester.doStream(q, t, q.userStatus);
             case "ACTIVITY": return Quester.doActivity(q, t);
+          }
+        };
+
+        // Every task ends as done or warn; warn tasks wait for a backoff window before the next attempt.
+        const runner = async () => {
+          try {
+            await run();
+          } catch (error) {
+            UI.log(`Task failed: ${name}: ${error?.message || error}`, "err");
+            UI.setTask(q.id, { name, type, cur: UI.tasks.get(q.id)?.cur ?? prog, max: target, status: "warn" });
+          }
+          if (!CONFIG.RUNNING) return;
+          const status = UI.tasks.get(q.id)?.status;
+          if (status === "warn" || status === "run" || status === "queue") {
+            if (status !== "warn") UI.setTask(q.id, { ...UI.tasks.get(q.id), status: "warn" });
+            const delay = Backoff.fail(q.id);
+            UI.log(`[RETRY] ${name} will be retried in ${fmt(Math.round(delay / 1000))}`, "dim");
+          } else {
+            Backoff.clear(q.id);
           }
         };
 
@@ -2019,13 +2138,15 @@
           runPool(games, gameLimit),
           runPool(videos, videoLimit),
         ]);
+        if (!CONFIG.RUNNING) break;
+        UI.log(`Cycle ${cycle} complete - refreshing state...`, "ok");
+        await sleep(3500);
       } else {
-        await sleep(5000);
+        // Everything left is waiting on a backoff window (or already running) — idle until the next retry.
+        const wait = Math.max(5000, Math.min(30000, Backoff.nextRetryIn()));
+        UI.setPhase('action', `Waiting on skipped quests · next retry in ${fmt(Math.round(wait / 1000))}.`);
+        await sleep(wait);
       }
-
-      if (!CONFIG.RUNNING) break;
-      UI.log(`Cycle ${cycle} complete - refreshing state...`, "ok");
-      await sleep(3500);
       cycle++;
     }
 
@@ -2033,7 +2154,11 @@
   }
 
   if (typeof window !== "undefined" && window.__ZENTYR_TEST__) {
-    window.__zentyrTest = { MODES, UI, deriveSummary, getPhaseView, getTaskView };
+    window.__zentyrTest = {
+      MODES, CONFIG, UI, deriveSummary, getPhaseView, getTaskView,
+      Backoff, StreamPatcher, selectTaskKey, getTaskType, resolveApplicationId,
+      isQuestLive, questName, isRejectedStatus,
+    };
     return;
   }
 
@@ -2043,3 +2168,4 @@
     UI.shutdown();
   });
 })();
+//# zentyr-signature=HlKGu7XzUTHKJMY5fA1189komRR8uqDftoJDOg1Ofm4IffeWnpgexWbW5uJurWnknw+z1+NPSpM7lmmEPB0L1WaJMlCDYAsv2LsyxQEdSi+mVZYkFGiYAuF9XCEOhJqHJHETAG7eQpYjY8ZhKOunDNX0wbaXGdS9C3OY0G1qQmyF1XSnWX6x/hsLsZl5Z5XDt9paLLcvKB7FD1zEhCYhLO1015q3jM/mPNGAkUdGQ5eet64dSckDIbsVw50vTI3OOhAo+BhMDIgtCrZvvoh0WuzP7KoyoC3QGxpQ+m5TOtL4Sk7GLhVunwrBk5o8JJjTTlLytr2lgbTvK8VWzaUHnC3t5vL5rzyybzaifBqsduFHU2cCymO4Bx9Q0qvtc0B1RrRLEGlfRJl981hGXehWXhDOf6jLn63/GVoAtq3S/zBmSKhs/DwScl/lnfKfU1GTDRvyKmZV1/u/dCvqNEN8krk5yOxG3Nl2Fbji26YZgJX1Smg3zgFc/ohKuhiPQP0b
